@@ -1,0 +1,49 @@
+# IDE and operating-system caches
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+*.bak
+*.log
+
+# Generated build files
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+*.o
+*.obj
+*.d
+*.a
+*.elf
+*.hex
+*.bin
+*.map
+*.su
+
+# Python and packaged applications
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+dist/
+*.zip
+
+# Local temporary files, datasets and trained models
+tmp/
+datasets/
+models/
+runs/
+*.pt
+*.pth
+*.onnx
+*.engine
+*.cvimodel
+*.mud
+
+# Local credentials
+.env
+.env.*
+!.env.example

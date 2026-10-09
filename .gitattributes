@@ -1,0 +1,2 @@
+# Preserve schematic PDF bytes regardless of local core.autocrlf settings.
+*.pdf binary
