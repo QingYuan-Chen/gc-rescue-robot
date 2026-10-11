@@ -1,6 +1,8 @@
 # IDE and operating-system caches
 .idea/
 .vscode/
+.cache/
+.clangd/
 *.iml
 .DS_Store
 Thumbs.db
@@ -12,22 +14,36 @@ build/
 cmake-build-*/
 CMakeFiles/
 CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+build.ninja
+.ninja_deps
+.ninja_log
 compile_commands.json
 *.o
 *.obj
 *.d
 *.a
+# Firmware images and complete flash backups stay in local archives.
 *.elf
+*.axf
 *.hex
 *.bin
 *.map
 *.su
+*.gcda
+*.gcno
+*.gcov
 
 # Python and packaged applications
 __pycache__/
 *.py[cod]
 .venv/
 venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 dist/
 *.zip
 
