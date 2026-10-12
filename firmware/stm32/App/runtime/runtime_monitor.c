@@ -5,12 +5,11 @@
 #include "stm32h7xx_hal.h"
 #include "task.h"
 
-#include <stdint.h>
-
-#define RUNTIME_MONITOR_PERIOD_MS 10U
-
-/* volatile 仅保留 SWD 观察数据；任务间快照由临界区保护。 */
+/* 统计由控制任务独占更新；公开快照通过临界区交接，保留 SWD 观察能力。 */
+static runtime_monitor_status_t sample;
 static volatile runtime_monitor_status_t runtime_status;
+static uint32_t previous_tick;
+static osThreadId_t control_task;
 
 void runtime_monitor_get_status(runtime_monitor_status_t *status)
 {
@@ -19,53 +18,39 @@ void runtime_monitor_get_status(runtime_monitor_status_t *status)
     taskEXIT_CRITICAL();
 }
 
-void runtime_monitor_run(void)
+void runtime_monitor_init(uint32_t period_ms)
 {
-    const uint32_t tick_hz = osKernelGetTickFreq();
-    const uint32_t period_ticks = RUNTIME_MONITOR_PERIOD_MS * tick_hz / 1000U;
-    const osThreadId_t task = osThreadGetId();
-    uint32_t previous_tick = osKernelGetTickCount();
-    uint32_t next_tick = previous_tick;
-
-    runtime_monitor_status_t sample = {
+    control_task = osThreadGetId();
+    previous_tick = osKernelGetTickCount();
+    sample = (runtime_monitor_status_t){
         .system_clock_hz = SystemCoreClock,
-        .rtos_tick_hz = tick_hz,
-        .period_ticks = period_ticks,
+        .rtos_tick_hz = osKernelGetTickFreq(),
+        .period_ticks = period_ms,
         .min_interval_ticks = UINT32_MAX,
     };
     taskENTER_CRITICAL();
     runtime_status = sample;
     taskEXIT_CRITICAL();
+}
 
-    for (;;)
+void runtime_monitor_sample(uint32_t tick, bool delay_error)
+{
+    sample.interval_ticks = tick - previous_tick;
+    previous_tick = tick;
+    sample.hal_tick_ms = HAL_GetTick();
+    sample.rtos_tick = tick;
+    if (sample.interval_ticks < sample.min_interval_ticks)
     {
-        next_tick += period_ticks;
-        if (osDelayUntil(next_tick) != osOK)
-        {
-            /* 记录错过的调度点，并重新对齐，避免连续追赶造成忙循环。 */
-            sample.delay_error_count++;
-            next_tick = osKernelGetTickCount();
-        }
-
-        const uint32_t current_tick = osKernelGetTickCount();
-        const uint32_t interval_ticks = current_tick - previous_tick;
-        previous_tick = current_tick;
-
-        sample.hal_tick_ms = HAL_GetTick();
-        sample.rtos_tick = current_tick;
-        sample.interval_ticks = interval_ticks;
-        if (interval_ticks < sample.min_interval_ticks)
-        {
-            sample.min_interval_ticks = interval_ticks;
-        }
-        if (interval_ticks > sample.max_interval_ticks)
-        {
-            sample.max_interval_ticks = interval_ticks;
-        }
-        sample.stack_free_bytes = osThreadGetStackSpace(task);
-        sample.sample_count++;
-        taskENTER_CRITICAL();
-        runtime_status = sample;
-        taskEXIT_CRITICAL();
+        sample.min_interval_ticks = sample.interval_ticks;
     }
+    if (sample.interval_ticks > sample.max_interval_ticks)
+    {
+        sample.max_interval_ticks = sample.interval_ticks;
+    }
+    sample.delay_error_count += delay_error ? 1U : 0U;
+    sample.stack_free_bytes = osThreadGetStackSpace(control_task);
+    sample.sample_count++;
+    taskENTER_CRITICAL();
+    runtime_status = sample;
+    taskEXIT_CRITICAL();
 }

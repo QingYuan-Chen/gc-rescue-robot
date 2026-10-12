@@ -2,7 +2,11 @@ set(app_sources
     robot_app.c
     bsp/board_startup.c
     bsp/debug_uart.c
+    bsp/motor.c
+    bsp/encoder.c
+    control/wheel_drive.c
     debug/debug_console.c
+    debug/wheel_commands.c
     runtime/runtime_monitor.c
 )
 target_sources(rescue.elf PRIVATE ${app_sources})

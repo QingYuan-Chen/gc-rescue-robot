@@ -1,4 +1,5 @@
 #include "debug_console.h"
+#include "wheel_commands.h"
 
 #include "bsp/debug_uart.h"
 #include "runtime/runtime_monitor.h"
@@ -51,6 +52,8 @@ static void report_status(void)
     {
         debug_uart_write(response, (uint16_t)length);
     }
+    wheel_commands_format_status(response, sizeof(response));
+    write_text(response);
 }
 
 static void report_parameter(void)
@@ -103,9 +106,16 @@ static void execute_line(char *line)
     {
         return;
     }
+    char wheel_response[320];
+    if (wheel_commands_execute(line, wheel_response, sizeof(wheel_response)))
+    {
+        write_text(wheel_response);
+        return;
+    }
     if (strcmp(line, "help") == 0)
     {
-        write_text("OK help: ping | status | get report_ms | set report_ms <0|100..60000>\r\n");
+        write_text("OK help: ping | status | get report_ms | set report_ms <0|100..60000> | "
+                   "wheel status/stop | wheel a/b <duty> <ms> | wheel both <a> <b> <ms>\r\n");
     }
     else if (strcmp(line, "ping") == 0)
     {
