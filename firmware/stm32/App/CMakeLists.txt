@@ -1,6 +1,8 @@
 set(app_sources
     robot_app.c
     bsp/board_startup.c
+    bsp/debug_uart.c
+    debug/debug_console.c
     runtime/runtime_monitor.c
 )
 target_sources(rescue.elf PRIVATE ${app_sources})

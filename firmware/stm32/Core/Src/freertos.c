@@ -26,6 +26,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "robot_app.h"
+#include "debug/debug_console.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -52,6 +53,14 @@ osThreadId_t robot_taskHandle;
 const osThreadAttr_t robot_task_attributes = {
   .name = "robot_task",
   .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityBelowNormal,
+};
+
+/* Definitions for debug_task */
+osThreadId_t debug_taskHandle;
+const osThreadAttr_t debug_task_attributes = {
+  .name = "debug_task",
+  .stack_size = 768 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 
@@ -61,6 +70,7 @@ const osThreadAttr_t robot_task_attributes = {
 /* USER CODE END FunctionPrototypes */
 
 void robot_task_entry(void *argument);
+void debug_task_entry(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -71,7 +81,7 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
-  /* 阶段 1 固定为 1 ms 的 RTOS 节拍，初始化失败时不创建应用任务。 */
+  /* 基础时基固定为 1 ms 的 RTOS 节拍，初始化失败时不创建应用任务。 */
   if (osKernelGetState() != osKernelReady || osKernelGetTickFreq() != 1000U)
   {
     Error_Handler();
@@ -98,8 +108,11 @@ void MX_FREERTOS_Init(void) {
   /* creation of robot_task */
   robot_taskHandle = osThreadNew(robot_task_entry, NULL, &robot_task_attributes);
 
+  /* creation of debug_task */
+  debug_taskHandle = osThreadNew(debug_task_entry, NULL, &debug_task_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
-  if (robot_taskHandle == NULL)
+  if (robot_taskHandle == NULL || debug_taskHandle == NULL)
   {
     Error_Handler();
   }
@@ -124,6 +137,21 @@ void robot_task_entry(void *argument)
   (void)argument;
   robot_app_run();
   /* USER CODE END robot_task_entry */
+}
+
+/* USER CODE BEGIN Header_debug_task_entry */
+/**
+  * @brief  Function implementing the debug_task thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_debug_task_entry */
+void debug_task_entry(void *argument)
+{
+  /* USER CODE BEGIN debug_task_entry */
+  (void)argument;
+  debug_console_run();
+  /* USER CODE END debug_task_entry */
 }
 
 /* Private application code --------------------------------------------------*/

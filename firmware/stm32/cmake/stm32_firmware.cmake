@@ -8,6 +8,7 @@ add_executable(rescue.elf
     Core/Src/main.c
     Core/Src/freertos.c
     Core/Src/gpio.c
+    Core/Src/usart.c
     Core/Src/stm32h7xx_hal_msp.c
     Core/Src/stm32h7xx_hal_timebase_tim.c
     Core/Src/stm32h7xx_it.c
@@ -26,6 +27,8 @@ add_executable(rescue.elf
     ${hal_dir}/Src/stm32h7xx_hal_tim.c
     ${hal_dir}/Src/stm32h7xx_hal_tim_ex.c
     ${hal_dir}/Src/stm32h7xx_hal_dma.c
+    ${hal_dir}/Src/stm32h7xx_hal_uart.c
+    ${hal_dir}/Src/stm32h7xx_hal_uart_ex.c
     ${freertos_dir}/croutine.c
     ${freertos_dir}/event_groups.c
     ${freertos_dir}/list.c
