@@ -9,7 +9,7 @@ STM32H750 控制与 MaixCAM Pro 视觉的智能救援机器人项目。
 ## 仓库与当前进度
 
 - 远端仓库：[QingYuan-Chen/gc-rescue-robot](https://github.com/QingYuan-Chen/gc-rescue-robot)。
-- 开发主分支：`main`，远端名：`origin`。
+- 日常开发与增量提交使用 `develop`，阶段验收通过后将稳定版本合入 `main`；远端名为 `origin`。
 - 重构位置：本仓库的 `firmware/stm32/`；同级 `../gc_rescue/` 保存本地原工程及烧录备份，不作为继续修复旧问题的工作项。
 - 当前下一步：阶段 1，建立重构工程最小运行基础；随后阶段 2，逐项验证 A/B 车轮开环输出与编码器。
 - 验证记录：[原工程构建与无线烧录](docs/validation/2026-10-11-original-firmware.md)。已有证据证明构建和下载成功，没有将其写成整车运行验收通过。
@@ -32,7 +32,7 @@ STM32H750 控制与 MaixCAM Pro 视觉的智能救援机器人项目。
 | 目录 | 内容 |
 | --- | --- |
 | `firmware/stm32/` | STM32 固件、CubeMX 配置、CMake、链接及调试配置 |
-| `firmware/stm32/gc_rescue/` | 原电机、PID、舵机、IMU、视觉通信及任务代码 |
+| `firmware/stm32/gc_rescue/` | 尚未替换的原模块；新方案接管时同步清理对应旧实现 |
 | `firmware/stm32/Drivers/` | 构建所需 CMSIS、STM32 HAL 及原许可证 |
 | `firmware/stm32/Middlewares/` | FreeRTOS 源码及原许可证 |
 | `vision/maixcam/main.py` | 现有 MaixCAM 视觉参考程序 |
@@ -44,20 +44,28 @@ STM32H750 控制与 MaixCAM Pro 视觉的智能救援机器人项目。
 
 ## 编译 STM32 固件
 
-准备 CMake 3.28 或更高版本、Ninja 与 GNU Arm Embedded 工具链，将 `cmake`、`ninja`、`arm-none-eabi-*` 加入 PATH。在仓库根目录运行：
+统一使用 [CMakePresets.json](firmware/stm32/CMakePresets.json)。当前验证组合为 STM32CubeCLT 1.20.0 中的 CMake 3.28.1、Ninja 和 ARM GCC 13.3.1；将 `cmake`、`ninja`、`arm-none-eabi-*` 加入 PATH。在 `firmware/stm32/` 目录运行：
 
 ```powershell
-cmake -S firmware/stm32 -B build/stm32 -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --preset stm32-debug
 if ($LASTEXITCODE -ne 0) { throw 'CMake 配置失败' }
-cmake --build build/stm32 --parallel 8
+cmake --build --preset stm32-debug --parallel 8
 if ($LASTEXITCODE -ne 0) { throw '固件构建失败' }
 ```
 
-产物位于 `build/stm32/`，包括 `rescue.elf`、`rescue.hex` 和 `rescue.bin`。恢复时的环境、兼容处理和历史构建结果见 [BUILD_NOTES.md](firmware/stm32/BUILD_NOTES.md)。其中旧目录名与校验值是历史记录，新目录构建的调试信息可能使产物哈希变化。
+产物位于仓库根目录的 `build/stm32-debug/`，包括 `rescue.elf`、`rescue.hex` 和 `rescue.bin`；优化构建使用 `stm32-release`，输出到 `build/stm32-release/`。既有 `build/stm32/`、`cmake-build-*` 作为历史产物保留，后续只使用上述预设。
 
-工作目录由“工创赛”改为 `gc` 后，已有 CMake 缓存仍含旧绝对路径。首次重新构建应使用新的构建目录（例如将命令中的 `build/stm32` 两处都改为 `build/stm32-gc`），保留历史构建产物。
+CLion 打开 `firmware/stm32/`，使用名为 `STM32` 的工具链，加载并启用 `stm32-debug` 预设。工具安装绝对路径留在本机工具链设置，`CMakeUserPresets.json` 不入 Git。配置细节见 [工程规范](docs/工程规范.md)。恢复时的兼容处理和历史验证记录见 [BUILD_NOTES.md](firmware/stm32/BUILD_NOTES.md)。
 
-2026-10-09 曾在本仓库目录完成全部 53 步编译链接（ARM GCC 13.3.1）；FLASH 使用 40,664 字节，RAM_D1 使用 25,416 字节。2026-10-11 的重编译与烧录对象为同级原工程 `../gc_rescue/`，记录见上方链接。本次仓库整理仅改忽略规则与文档，未重新构建或烧录本仓库固件。
+原工程无线烧录验证与本仓库构建分别记录；重构后的各模块仍需自己的运行验收。本次工程规范统一不修改固件算法与参数。
+
+## 开发约定
+
+[工程规范 V1.1](docs/工程规范.md) 是目录、命名、模块接口、CLion 配置和验收方式的统一入口；[AGENTS.md](AGENTS.md) 约束后续协作。
+
+新增重构代码放在 `firmware/stm32/App/`，采用 C11、UTF-8、LF、4 空格缩进，函数与变量使用 `snake_case`，接口名称明确单位。`.editorconfig`、`.clang-format` 与 `.clang-format-ignore` 共同约束格式；旧参考代码、生成代码与第三方库保留原格式和编码。
+
+项目自有注释统一使用中文，仅必要术语和专有名词保留英文。模块和源文件遵循高内聚、低耦合、单一职责；新方案替换时同步清理失效实现、配置及说明，历史通过 Git 追溯。每完成一个可检查的增量即提交到 `develop`，通过对应阶段验收的稳定版本再合入 `main`。
 
 ## 重构顺序与验收
 

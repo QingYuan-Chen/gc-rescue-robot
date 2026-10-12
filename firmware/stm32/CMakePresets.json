@@ -1,0 +1,52 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "stm32-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../../build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+      },
+      "vendor": {
+        "jetbrains.com/clion": {
+          "toolchain": "STM32"
+        }
+      }
+    },
+    {
+      "name": "stm32-debug",
+      "displayName": "STM32 Debug",
+      "description": "默认用于逐项重构与上板验收的开发配置。",
+      "inherits": "stm32-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "stm32-release",
+      "displayName": "STM32 Release",
+      "description": "优化构建配置，部署到硬件前单独验收。",
+      "inherits": "stm32-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "stm32-debug",
+      "configurePreset": "stm32-debug"
+    },
+    {
+      "name": "stm32-release",
+      "configurePreset": "stm32-release"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-# IDE and operating-system caches
+# IDE 与操作系统缓存
 .idea/
 .vscode/
 .cache/
@@ -9,11 +9,12 @@ Thumbs.db
 *.bak
 *.log
 
-# Generated build files
+# 生成的构建文件
 build/
 cmake-build-*/
 CMakeFiles/
 CMakeCache.txt
+CMakeUserPresets.json
 cmake_install.cmake
 CTestTestfile.cmake
 Testing/
@@ -25,7 +26,7 @@ compile_commands.json
 *.obj
 *.d
 *.a
-# Firmware images and complete flash backups stay in local archives.
+# 固件镜像和完整 Flash 备份保留在本地归档中。
 *.elf
 *.axf
 *.hex
@@ -36,7 +37,7 @@ compile_commands.json
 *.gcno
 *.gcov
 
-# Python and packaged applications
+# Python 缓存、虚拟环境与应用打包产物
 __pycache__/
 *.py[cod]
 .venv/
@@ -47,7 +48,7 @@ venv/
 dist/
 *.zip
 
-# Local temporary files, datasets and trained models
+# 本地临时文件、数据集与训练模型
 tmp/
 datasets/
 models/
@@ -59,7 +60,7 @@ runs/
 *.cvimodel
 *.mud
 
-# Local credentials
+# 本地凭据
 .env
 .env.*
 !.env.example

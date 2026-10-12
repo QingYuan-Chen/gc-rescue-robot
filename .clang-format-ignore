@@ -1,0 +1,10 @@
+# 仅格式化新增的项目自有模块，保留导入源码的原格式。
+firmware/stm32/Core/**
+firmware/stm32/Drivers/**
+firmware/stm32/Middlewares/**
+firmware/stm32/gc_rescue/**
+build/**
+**/cmake-build-*/**
+tmp/**
+dist/**
+.git/**

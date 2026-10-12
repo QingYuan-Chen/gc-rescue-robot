@@ -1,2 +1,16 @@
-# Preserve schematic PDF bytes regardless of local core.autocrlf settings.
+# 将原理图 PDF 按二进制处理，避免本机 core.autocrlf 设置改变其内容。
 *.pdf binary
+
+# 统一新增模块与工程规范文件的换行，不批量重写导入的固件源码。
+/AGENTS.md text eol=lf
+/.editorconfig text eol=lf
+/.clang-format text eol=lf
+/.clang-format-ignore text eol=lf
+/.gitattributes text eol=lf
+/.gitignore text eol=lf
+/README.md text eol=lf
+/docs/** text eol=lf
+/firmware/stm32/CMakePresets.json text eol=lf
+/firmware/stm32/App/** text eol=lf
+/tests/** text eol=lf
+/tools/** text eol=lf

@@ -1,8 +1,31 @@
 # 工程恢复与构建记录
 
+## 2026-10-12 协作规范更新
+
+当前约定见 [工程规范 V1.1](../../docs/工程规范.md)：项目自有注释统一使用中文，模块保持高内聚、低耦合与单一职责，方案替换时同步清理旧实现和相关配置。开发增量及时提交到 `develop`，通过相应阶段验收的稳定版本再合入 `main`。
+
+本次更新规范、配置说明和注释，不改变 CMake 预设的构建参数，也不修改固件源码。下方保留此前构建的实际记录。
+
+## 2026-10-11 工程规范与统一预设
+
+开发约定见 [工程规范](../../docs/工程规范.md)。本次新增 `CMakePresets.json`，使用当前有效 CMake 构建入口和原编译选项，未改固件源码、控制算法或参数。命令行与 CLion 统一使用 `stm32-debug`，Release 按需使用 `stm32-release`。
+
+在 `firmware/stm32/` 执行 `cmake --preset <预设名>` 和 `cmake --build --preset <预设名> --parallel 8`。默认产物统一到仓库根目录的 `build/stm32-debug/` 或 `build/stm32-release/`，本机绝对工具路径不进入共享预设。
+
+两种预设均已用 CMake 3.28.1、Ninja、ARM GCC 13.3.1 完成 53/53 步构建，各保留 6 条既有 `volatile` 警告：
+
+| 预设 | FLASH 字节 | RAM_D1 字节 | BIN SHA256 |
+| --- | ---: | ---: | --- |
+| `stm32-debug` | 40664 | 25416 | `ca3a763e4847abc09f9edce60cc746fcd44869447de252b8f974e182bf15c8f0` |
+| `stm32-release` | 41936 | 25456 | `94b5eb0bd729cf45043314a50066d9482156334c5041515d4373047f697bd6c4` |
+
+Debug BIN 与已烧录的原工程固件一致。此次仅验证配置、构建与开发规则，没有再次烧录或启动程序；Release 的编译成功不代表其硬件运行已验收。日志保留在各构建目录的 `configure-conventions.log` 和 `build-conventions.log`。
+
+格式配置通过 CLion 自带 clang-format 22 解析与样例检查；旧业务、CubeMX 和第三方源码的排除规则已验证，没有对它们进行格式化或转码。已有 CLion 窗口仍需加载并启用新预设，项目文件本身不自动修改本机的活动配置。
+
 ## 2026-10-11 当前重构入口
 
-本仓库的 `firmware/stm32/` 为后续逐层重构目录，构建方法与目录说明以 [仓库 README](../../README.md) 为准。仓库主分支为 `main`，远端为 `QingYuan-Chen/gc-rescue-robot`。
+本仓库的 `firmware/stm32/` 为后续逐层重构目录，构建方法与目录说明以 [仓库 README](../../README.md) 为准。日常开发使用 `develop`，稳定版本合入 `main`，远端为 `QingYuan-Chen/gc-rescue-robot`。
 
 同级原工程 `../gc_rescue/`（相对仓库根目录）已在新路径下完成 53/53 步构建，并通过无线 CMSIS-DAP 烧录和完整 Flash 回读校验。固件 BIN 为 40,664 字节，SHA256 为 `ca3a763e4847abc09f9edce60cc746fcd44869447de252b8f974e182bf15c8f0`。操作结束后芯片保持暂停，未验证用户程序或整车运行，详见 [原工程验证记录](../../docs/validation/2026-10-11-original-firmware.md)。
 
