@@ -10,6 +10,7 @@ void Maixcam_init(void){
 	HAL_UART_Receive_DMA(&maixcam,maixcam_rx_buf,BUFFER_SIZE);
 }
 
+// 原实现经 USART3 发送单字节模式值；此处保留现有行为，不视为新协议。
 void Set_Vision_Mode(uint8_t mode){
     uint8_t data = mode;
     my_car.track_mode = mode;
@@ -28,9 +29,10 @@ void USART2_IRQHandler(void){
 		HAL_UART_DMAStop(&maixcam);
 		uint32_t temp = __HAL_DMA_GET_COUNTER(&hdma_usart2_rx);
 		maixcam_rx_len  = BUFFER_SIZE - temp;
+		// 原接收格式为 6 字节：队伍、模式、数量、危险标志、x、y。
 		if(maixcam_rx_len == 6){
 			if(maixcam_rx_buf[0] == 0x01 || maixcam_rx_buf[0] == 0x02){
-				if(my_car.vision_manager.team  == 0){ //如果没获取队伍，则获取队伍
+				if(my_car.vision_manager.team  == 0){ // 仅在队伍尚未设置时记录本次队伍值
                     my_car.vision_manager.team = maixcam_rx_buf[0];
 				}
                 my_car.vision_manager.mode = maixcam_rx_buf[1];

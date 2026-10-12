@@ -5,13 +5,13 @@
 TaskHandle_t grab_handler;
 
 static GrabState grab_state = GRAB_WAIT_TEAM;
-static uint8_t no_target_cnt = 0;           // 连续丢目标计数
-static uint16_t turn_around_cnt = 0;           // 连续丢目标计数
+static uint8_t no_target_cnt = 0;           // 跟踪过程中连续丢失目标的任务轮次
+static uint16_t turn_around_cnt = 0;           // 搜索过程中无目标的累计任务轮次
 static uint16_t have_grab_ball = 0;
 
 void grab_task(void *pvParameters){
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t TASK_PERIOD = pdMS_TO_TICKS(10); // 10ms周期
+    const TickType_t TASK_PERIOD = pdMS_TO_TICKS(10); // 标称调度周期为 10 ms
 
     while(1){
         taskENTER_CRITICAL();
@@ -149,7 +149,7 @@ void grab_task(void *pvParameters){
                 break;
         }
 
-        // 任务精准周期（10ms）
+        // 以 10 ms 为调度基准；分支中的阻塞延时会延长实际执行间隔。
         vTaskDelayUntil(&xLastWakeTime, TASK_PERIOD);
     }
 }

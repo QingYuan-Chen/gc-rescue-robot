@@ -6,7 +6,7 @@ int32_t MOTOR_PWM_MAX = 0;
 static MotorState motor_state = MOTOR_STOP;
 TaskHandle_t motor_handler;
 
-struct I_pid_obj motor_L0 = {0,0,0,0,0,0}; //0前1后
+struct I_pid_obj motor_L0 = {0,0,0,0,0,0}; // 原四通道命名：L0/R0 对应 TIM3/TIM2，L1/R1 对应 TIM4/TIM8。
 struct I_pid_obj motor_R0 = {0,0,0,0,0,0};
 struct I_pid_obj motor_L1 = {0,0,0,0,0,0};
 struct I_pid_obj motor_R1 = {0,0,0,0,0,0};
@@ -44,7 +44,7 @@ void motor_pid_clear(void){
 void pid_init(void){
 
     MOTOR_PWM_MAX = (int32_t)(htim1.Instance->ARR * MAX_SPEED_rate);
-    //增量式PID 电机内环 带抗积分饱和
+    // 原增量式 PID 参数；反馈为每个采样周期的编码器计数，输出为 CCR 计数。
     L0_param.kp = 1600.0f;
     L0_param.ki = 180.0f;
     L0_param.kd = 0.0f;
@@ -65,8 +65,8 @@ void pid_init(void){
     R1_param.kd = 0.0f;
     R1_param.outputMax = MOTOR_PWM_MAX;
 
-    //位置PID 外环 带微分项低通滤波
-    //自平衡
+    // 原位置式 PID 参数，微分项使用低通滤波。
+    // gyroG 保留原参数，当前控制任务未调用该控制器。
     gyroG_pid_param.kp=1;
     gyroG_pid_param.ki=0;
     gyroG_pid_param.kd=0;
@@ -74,7 +74,7 @@ void pid_init(void){
     gyroG_pid_param.outputMin = -gyroG_pid_param.outputMax;
     gyroG_pid_param.differential_filterK =0.5f;
 
-    //左右
+    // 视觉横向误差控制参数。
     Vision_x_pid_param.kp=1.25f;
     Vision_x_pid_param.ki=0;
     Vision_x_pid_param.kd=0.2f;
@@ -82,7 +82,7 @@ void pid_init(void){
     Vision_x_pid_param.outputMin = -60;
     Vision_x_pid_param.differential_filterK =0.5f;
 
-    //前后
+    // 视觉纵向误差控制参数。
     Vision_y_pid_param.kp=0.6f;
     Vision_y_pid_param.ki=0;
     Vision_y_pid_param.kd=0.3f;
@@ -90,7 +90,7 @@ void pid_init(void){
     Vision_y_pid_param.outputMin = -60;
     Vision_y_pid_param.differential_filterK =0.5f;
 
-    //原地旋转
+    // gyroT 保留原转向参数，当前控制任务未调用该控制器。
     gyroT_pid_param.kp = 0.85f/3;
     gyroT_pid_param.ki = 0;
     gyroT_pid_param.kd = 0.25f;
@@ -109,6 +109,7 @@ void motor_init(void){
     pid_init();
 }
 
+// 读取上次清零以来的计数增量，并清零计数器；motor_task 的标称采样周期为 10 ms。
 void get_encoder(void){
     motor_L0.measure = (float)(int16_t)TIM3->CNT;
     motor_R0.measure = (float)(int16_t)TIM2->CNT;
@@ -293,10 +294,10 @@ void motor_set_state(MotorState state){
 }
 
 void motor_task_create(void){
-    xTaskCreate((TaskFunction_t ) motor_task,//任务函数
-                (const char *)"motor_task",	  //任务名字
-                (uint32_t) motor_size,    //任务堆栈大小
-                (void* )NULL,                  //传递给任务参数的指针参数
-                (UBaseType_t) motor_task_priority, //任务的优先级
-                (TaskHandle_t *)&motor_handler ); //任务句柄
+    xTaskCreate((TaskFunction_t ) motor_task,// 任务函数
+                (const char *)"motor_task",	  // 任务名称
+                (uint32_t) motor_size,    // 任务栈深度，单位为 StackType_t 元素
+                (void* )NULL,                  // 传给任务入口的参数
+                (UBaseType_t) motor_task_priority, // 任务优先级
+                (TaskHandle_t *)&motor_handler ); // 任务句柄
 }

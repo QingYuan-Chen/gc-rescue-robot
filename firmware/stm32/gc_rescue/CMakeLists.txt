@@ -1,22 +1,19 @@
-# rescue/CMakeLists.txt
+# 原工程参考模块的源文件与头文件目录注册。
 
-# ========== 1. 初始化变量（必须放在最开头） ==========
-# 定义当前rescue目录的根路径，方便后续复用
+# 保存参考模块根目录，供下方文件收集使用。
 set(RESCUE_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 # 初始化源文件和头文件路径列表
 set(RESCUE_SOURCES "")
 set(RESCUE_INCLUDES "")
 
-# ========== 2. 处理【rescue根目录】的文件（关键！解决common.h找不到） ==========
-# 收集根目录下的所有 .c 文件（比如 sin_generate.c、turn.c）
+# 收集根目录中的业务源文件，当前包含 car_task.c。
 file(GLOB RESCUE_ROOT_C_FILES ${RESCUE_ROOT}/*.c)
 list(APPEND RESCUE_SOURCES ${RESCUE_ROOT_C_FILES})
 
-# 把rescue根目录加入头文件搜索路径（核心！子目录的.h就能找到common.h）
+# 将 common.h 所在目录加入参考模块的头文件搜索路径。
 list(APPEND RESCUE_INCLUDES ${RESCUE_ROOT})
 
-# ========== 3. 处理所有一级子目录（Motor/、Time/、Rudder_control/） ==========
-# 收集所有一级子目录
+# 保留原工程一级子目录的自动收集方式；新模块采用显式源文件列表。
 file(GLOB RESCUE_SUBDIRS LIST_DIRECTORIES true ${RESCUE_ROOT}/*)
 
 foreach(DIR ${RESCUE_SUBDIRS})
@@ -31,13 +28,11 @@ foreach(DIR ${RESCUE_SUBDIRS})
     endif()
 endforeach()
 
-# ========== 4. 把收集到的内容添加到主工程 ==========
-# 添加所有源文件到目标
+# 将参考模块的源文件注册到现有固件目标。
 target_sources(${PROJECT_NAME}.elf PRIVATE ${RESCUE_SOURCES})
 
-# 添加所有头文件路径到目标
+# 将参考模块的头文件目录注册到现有固件目标。
 target_include_directories(${PROJECT_NAME}.elf PRIVATE ${RESCUE_INCLUDES})
 
-#在add_executable(${PROJECT_NAME}.elf ${SOURCES} ${LINKER_SCRIPT}) 下面添加 add_subdirectory(gc_rescue)
-#在所有-mcpu=cortex-m7 -mthumb -mthumb-interwork 后面添加 -mfpu=fpv5-d16 -mfloat-abi=hard
-#还要把h7xx_it.c里的USART2_IRQHandler 和 USART3_IRQHandler注释掉
+# 主工程已通过 add_subdirectory(gc_rescue) 接入本目录。
+# USART2/USART3 的有效中断入口分别保留在 maixcam.c/gyro.c 中。

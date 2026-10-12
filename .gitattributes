@@ -10,7 +10,11 @@
 /.gitignore text eol=lf
 /README.md text eol=lf
 /docs/** text eol=lf
+/firmware/stm32/BUILD_NOTES.md text eol=lf
+/firmware/stm32/CMakeLists.txt text eol=lf
+/firmware/stm32/CMakeLists_template.txt text eol=lf
 /firmware/stm32/CMakePresets.json text eol=lf
 /firmware/stm32/App/** text eol=lf
+/vision/** text eol=lf
 /tests/** text eol=lf
 /tools/** text eol=lf

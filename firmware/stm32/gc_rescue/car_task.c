@@ -2,17 +2,14 @@
 
 volatile struct MY_Car my_car;
 
-/*****************************************************************************
-函数名： user_init
-函数功能：初始化外设，结构体等
-*******************************************************************************/
+/* 初始化原工程的编码器、电机及视觉接收；任务创建由 Start_task 负责。 */
 void user_init(void){
     encoder_init();
     motor_init();
     Maixcam_init();
 }
 
-TaskHandle_t Start_handler; //定义开始任务句柄
+TaskHandle_t Start_handler; // 启动任务句柄
 void Start_task(void *pvParameters){
     taskENTER_CRITICAL();
 
@@ -35,27 +32,21 @@ void Start_task(void *pvParameters){
     #endif
 
 
-    vTaskDelete(Start_handler); //删除开始任务
-    taskEXIT_CRITICAL();            //退出临界区
+    vTaskDelete(Start_handler); // 删除启动任务
+    taskEXIT_CRITICAL();            // 退出临界区
 }
 
-/*****************************************************************************
-函数名： GET_free_RAM
-函数功能：获得任务的剩余堆栈大小 并且打印
-形参：该任务的句柄      若传回NULL，则为该任务的堆栈
-注意：INCLUDE_uxTaskGetStackHighWaterMark 1    才能使用
-*******************************************************************************/
+/* 保留的调试入口：当前仅延时 500 个 RTOS 节拍，未使用 xTask 或读取任务栈。 */
 void GET_free_RAM(TaskHandle_t xTask){
-//		printf("RAM = %d\r\n",(int32_t)uxTaskGetStackHighWaterMark(xTask));
     vTaskDelay(500);
 }
 
 void Start_task_create(void){
-    xTaskCreate((TaskFunction_t ) Start_task,//任务函数
-                (const char *)"Start_task",	  //任务名字
-                (uint32_t) Start_size,    //任务堆栈大小
-                (void* )NULL,                  //传递给任务参数的指针参数
-                (UBaseType_t) Start_task_priority, //任务的优先级
-                (TaskHandle_t *)&Start_handler ); //任务句柄
+    xTaskCreate((TaskFunction_t ) Start_task,// 任务函数
+                (const char *)"Start_task",	  // 任务名称
+                (uint32_t) Start_size,    // 任务栈深度，单位为 StackType_t 元素
+                (void* )NULL,                  // 传给任务入口的参数
+                (UBaseType_t) Start_task_priority, // 任务优先级
+                (TaskHandle_t *)&Start_handler ); // 任务句柄
 }
 

@@ -9,10 +9,10 @@
 #include "grab_bolls.h"
 #include "rudder_control.h"
 
-extern TaskHandle_t Start_handler ; //定义开始任务句柄
-void Start_task(void *pvParameters);//声明任务函数
-#define Start_size  1024   //任务堆栈大小
-#define Start_task_priority 32  //任务优先级
+extern TaskHandle_t Start_handler ; // 启动任务句柄
+void Start_task(void *pvParameters);// 启动任务入口
+#define Start_size  1024   // 任务栈深度，单位为 StackType_t 元素
+#define Start_task_priority 32  // 任务优先级
 
 
 void Start_task_create(void);

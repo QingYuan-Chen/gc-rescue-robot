@@ -1,5 +1,7 @@
 #include "rudder_control.h"
 
+// 以下保留旧机构的姿态命名与 CCR 参数，尚未迁移到当前 Servo1/Servo2 映射。
+
 TaskHandle_t rudder_handler;
 
 void rudder_init(void){
@@ -29,53 +31,47 @@ void Set_Rudder_Mode(uint8_t mode){
     my_car.rudder_mode = mode;
 }
 
-// 夹取
+// 原多球夹取姿态：通道 2，CCR 为 12。
 void grab_more_posture(void){
     rudder_control(2, 12);
 }
 
-// 张开
+// 原多球释放姿态：当前与夹取使用相同的 CCR 值。
 void open_more_posture(void){
     rudder_control(2, 12);
 }
 
-// 夹取
+// 原单球夹取姿态：通道 1，CCR 为 12。
 void grab_one_posture(void){
     rudder_control(1, 12);
 }
 
-// 张开
+// 原单球释放姿态：当前与夹取使用相同的 CCR 值。
 void open_one_posture(void){
     rudder_control(1, 12);
 }
 
-// 头部直立
+// 原全范围寻找姿态：通道 3，CCR 为 13。
 void find_all_posture(void){
     rudder_control(3, 13);
 }
 
-// 寻找姿态
+// 原寻找姿态：通道 3，CCR 为 150。
 void find_posture(void){
     rudder_control(3, 150);
 }
 
-// 确认姿态
+// 原确认姿态：通道 3，CCR 为 13。
 void confirm_posture(void){
     rudder_control(3, 13);
 }
 
 void rudder_task(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t TASK_PERIOD = pdMS_TO_TICKS(10); // 10ms周期
+    const TickType_t TASK_PERIOD = pdMS_TO_TICKS(10); // 预留的 10 ms 周期参数，当前循环尚未使用
     rudder_init();
     while (1) {
-//        grab_more_posture();
-//        open_more_posture();
-//        grab_one_posture();
-//        open_one_posture();
-//        find_all_posture();
-//        find_posture();
-//        confirm_posture();
+        // 当前参考任务未执行姿态动作或等待，调度方式在舵机模块迁移时处理。
     }
 
 }

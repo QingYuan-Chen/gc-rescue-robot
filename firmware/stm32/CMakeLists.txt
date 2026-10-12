@@ -3,7 +3,7 @@ set(CMAKE_SYSTEM_NAME Generic)
 set(CMAKE_SYSTEM_VERSION 1)
 cmake_minimum_required(VERSION 3.28)
 
-# specify cross-compilers and tools
+# 指定 ARM 交叉编译器及二进制处理工具。
 set(CMAKE_C_COMPILER arm-none-eabi-gcc)
 set(CMAKE_CXX_COMPILER arm-none-eabi-g++)
 set(CMAKE_ASM_COMPILER  arm-none-eabi-gcc)
@@ -13,9 +13,9 @@ set(CMAKE_OBJDUMP arm-none-eabi-objdump)
 set(SIZE arm-none-eabi-size)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
-# project settings
-# CMP0125 NEW crashes tool discovery with this Windows ARM toolchain.
-# Limit the compatibility policy to compiler/binutils initialization.
+# 工程语言与编译器初始化设置。
+# 当前 Windows ARM 工具链在 CMP0125 NEW 下发现工具时崩溃。
+# 仅在编译器与二进制工具初始化期间使用已验证的兼容策略。
 cmake_policy(PUSH)
 cmake_policy(SET CMP0125 OLD)
 project(rescue C CXX ASM)
@@ -23,21 +23,10 @@ cmake_policy(POP)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_STANDARD 11)
 
-#Uncomment for hardware floating point
-#add_compile_definitions(ARM_MATH_CM4;ARM_MATH_MATRIX_CHECK;ARM_MATH_ROUNDING)
-#add_compile_options(-mfloat-abi=hard -mfpu=fpv4-sp-d16)
-#add_link_options(-mfloat-abi=hard -mfpu=fpv4-sp-d16)
-
-#Uncomment for software floating point
-#add_compile_options(-mfloat-abi=soft)
-
 add_compile_options(-mcpu=cortex-m7 -mthumb -mthumb-interwork -mfpu=fpv5-d16 -mfloat-abi=hard)
 add_compile_options(-ffunction-sections -fdata-sections -fno-common -fmessage-length=0)
 
-# uncomment to mitigate c++17 absolute addresses warnings
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-register")
-
-# Enable assembler files preprocessing
+# 为汇编源文件启用预处理。
 add_compile_options($<$<COMPILE_LANGUAGE:ASM>:-x$<SEMICOLON>assembler-with-cpp>)
 
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "Release")

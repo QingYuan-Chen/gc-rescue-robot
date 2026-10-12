@@ -225,34 +225,6 @@ void USART1_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles USART2 global interrupt.
-  */
-//void USART2_IRQHandler(void)
-//{
-//  /* USER CODE BEGIN USART2_IRQn 0 */
-//////
-//  /* USER CODE END USART2_IRQn 0 */
-//  HAL_UART_IRQHandler(&huart2);
-//  /* USER CODE BEGIN USART2_IRQn 1 */
-//////
-//  /* USER CODE END USART2_IRQn 1 */
-//}
-
-/**
-  * @brief This function handles USART3 global interrupt.
-  */
-//void USART3_IRQHandler(void)
-//{
-//  /* USER CODE BEGIN USART3_IRQn 0 */
-//////
-//  /* USER CODE END USART3_IRQn 0 */
-//  HAL_UART_IRQHandler(&huart3);
-//  /* USER CODE BEGIN USART3_IRQn 1 */
-//////
-//  /* USER CODE END USART3_IRQn 1 */
-//}
-
-/**
   * @brief This function handles TIM5 global interrupt.
   */
 void TIM5_IRQHandler(void)
@@ -265,20 +237,6 @@ void TIM5_IRQHandler(void)
 
   /* USER CODE END TIM5_IRQn 1 */
 }
-
-/**
-  * @brief This function handles UART5 global interrupt.
-  */
-//void UART5_IRQHandler(void)
-//{
-//  /* USER CODE BEGIN UART5_IRQn 0 */
-////
-//  /* USER CODE END UART5_IRQn 0 */
-//  HAL_UART_IRQHandler(&huart5);
-//  /* USER CODE BEGIN UART5_IRQn 1 */
-////
-//  /* USER CODE END UART5_IRQn 1 */
-//}
 
 /**
   * @brief This function handles TIM6 global interrupt, DAC1_CH1 and DAC1_CH2 underrun error interrupts.
@@ -309,5 +267,8 @@ void TIM17_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-
+/* USART2/USART3 的有效入口分别位于 gc_rescue/Maixcam/maixcam.c 和 gc_rescue/Jy61/gyro.c。
+ * UART5 当前没有应用处理函数，向量沿用启动文件中的默认处理。
+ * 重新生成代码时须核对中断入口归属，避免生成重复定义。
+ */
 /* USER CODE END 1 */

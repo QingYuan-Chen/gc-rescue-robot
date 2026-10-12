@@ -15,10 +15,10 @@ void find_all_posture(void);
 void find_posture(void);
 void confirm_posture(void);
 
-extern TaskHandle_t rudder_handler; 				//定义开始任务句柄
-void rudder_task(void *pvParameters);//声明任务函数
-#define rudder_size  (1024*2)			//任务堆栈大小
-#define rudder_task_priority 10 			//任务优先级
+extern TaskHandle_t rudder_handler; 				// 舵机任务句柄
+void rudder_task(void *pvParameters);// 舵机任务入口
+#define rudder_size  (1024*2)			// 任务栈深度，单位为 StackType_t 元素
+#define rudder_task_priority 10 			// 任务优先级
 void rudder_task_create(void);
 
 #endif

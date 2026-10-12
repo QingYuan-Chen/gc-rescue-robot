@@ -1,7 +1,7 @@
 #include "pid.h"
 
-//增量式PID
-//带抗积分饱和
+// 增量式 PID：按误差方向抑制继续饱和的积分增量，输出限幅由调用方执行。
+// 公式未显式乘除采样时间，迁移时须同时保留调用周期和输入输出尺度。
 void incremental_PID (struct I_pid_obj *motor, struct PID_param *pid)
 {
 	float proportion = 0, integral = 0, differential = 0;
@@ -10,7 +10,7 @@ void incremental_PID (struct I_pid_obj *motor, struct PID_param *pid)
 	
 	proportion = motor->bias - motor->last_bias;
 	
-	//抗积分饱和
+	// 已越过输出边界时，仅允许有助于退出饱和的积分增量。
 	if (motor->output > pid->outputMax)
 	{
 		if (motor->bias < 0)
@@ -34,8 +34,7 @@ void incremental_PID (struct I_pid_obj *motor, struct PID_param *pid)
 	motor->last_bias = motor->bias;
 }
 
-//位置式PID
-//带微分项低通滤波
+// 位置式 PID：条件积分、微分低通滤波及输出限幅。
 float positional_PID (struct P_pid_obj *obj, struct PID_param *pid)
 {
 	float differential = 0;
@@ -58,7 +57,7 @@ float positional_PID (struct P_pid_obj *obj, struct PID_param *pid)
 	}
 	
 	
-	//微分项低通滤波
+	// 对本次误差差分与上次微分状态加权，沿用原滤波系数。
 	differential = (obj->bias - obj->last_bias) * pid->differential_filterK + 
 					(1 - pid->differential_filterK) * obj->last_differential;
 	

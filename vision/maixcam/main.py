@@ -2,7 +2,7 @@
 from maix import camera, display, image, nn, app, uart, err, pinmap, time, touchscreen
 import struct, os
 
-# 打包格式：12个uint8_t
+# 网络字节序（大端）：4 个 uint8_t 和 4 个 uint16_t，共 12 字节载荷。
 PACK_FMT = "!BBBBHHHH"
 
 class VisionManager:
@@ -19,7 +19,7 @@ class VisionManager:
         self.base_miss_counter = 0
 
     def pack(self) -> bytes:
-        """把当前对象数据打包成串口字节包"""
+        """将当前状态打包为不含帧头的 12 字节载荷。"""
         return struct.pack(
             PACK_FMT,
             self.team,
@@ -34,20 +34,20 @@ class VisionManager:
 
     @staticmethod
     def unpack(data: bytes) -> "VisionManager":
-        """静态方法：接收字节流，返回VisionManager对象"""
+        """解析不含帧头的 12 字节载荷，返回 VisionManager 对象。"""
         if len(data) != 12:
             raise ValueError("数据包必须是12字节")
         t, bn, iv, go, x, y, w, h = struct.unpack(PACK_FMT, data)
         return VisionManager(team=t, bolls_num=bn, is_valid=iv, go_on=go, x=x, y=y, w=w, h=h)
 
     def send(self, serial):
-        """传入uart实例发送"""
+        """通过 UART 发送 0x55 0xAA 帧头和 12 字节载荷。"""
         raw = self.pack()
         pkt = b'\x55\xAA' + raw
         serial.write(pkt)
 
     def __repr__(self):
-        """打印对象方便调试"""
+        """返回用于调试的对象字段描述。"""
         return (
             f"VisionManager(team={self.team}, bolls_num={self.bolls_num}, "
             f"is_valid={self.is_valid}, go_on={self.go_on}, x={self.x}, y={self.y}, w={self.w}, h={self.h})"
@@ -77,7 +77,7 @@ device = "/dev/ttyS0"
 for pin, func in pin_function.items():
     err.check_raise(pinmap.set_pin_function(pin, func), f"Failed set pin{pin} function to {func}")
 
-# Init UART
+# 初始化串口。
 serial = uart.UART(device, 115200)
 
 
@@ -113,7 +113,7 @@ img_h1 = 174
 model_path = "/root/models/gc/290808/model_290808.mud"
 detector = nn.YOLOv5(model=model_path)
 
-# 全部标签列表，顺序和模型输出class_id一一对应
+# 标签顺序与当前模型的 class_id 一一对应。
 labels = ["black", "blue_base", "red_base", "cross", "yellow", "red", "blue"]
 
 # 各模式允许识别的标签集合
@@ -136,8 +136,6 @@ mode_name_map = {
 
 cam = camera.Camera(detector.input_width(), detector.input_height(), detector.input_format())
 dis = display.Display()
-# print(dis.width())
-# print(dis.height())
 current_mode = debugger # 上电默认调试模式
 
 while not app.need_exit():
@@ -145,11 +143,11 @@ while not app.need_exit():
         b1 = serial.read(1)
         if not b1:
             break
-        # 匹配第一帧头 0x55
+        # 匹配帧头的第一个字节 0x55。
         if b1[0] == 0x55:
             b2 = serial.read(1)
             if len(b2) and b2[0] == 0xAA:
-                # 匹配完整双包头，读取模式号
+                # 匹配完整的双字节帧头后读取模式号。
                 cmd_buf = serial.read(1)
                 if len(cmd_buf) == 1:
                     cmd = cmd_buf[0]
@@ -187,7 +185,7 @@ while not app.need_exit():
     
     objs_filtered = []
 
-    # 仅当收到有效模式指令时，执行检测并过滤目标
+    # 当前模式在过滤表中时执行检测；上电默认调试模式也满足此条件。
     if current_mode in mode_filter:
         allow_labels = mode_filter[current_mode]
 
@@ -198,7 +196,7 @@ while not app.need_exit():
             if cls_name in allow_labels:
                 objs_filtered.append(obj)
         
-        #绘制过滤后的目标框与文字
+        # 绘制过滤后的目标框与文字。
         for obj in objs_filtered:
             cls_name = labels[obj.class_id]
             score = obj.score
@@ -222,9 +220,9 @@ while not app.need_exit():
                 vision.base_miss_counter = 0      # 检测到了，计数器清零
             else:
                 vision.base_miss_counter += 1
-                if vision.base_miss_counter > 5:  # 连续 5 帧没看到基地，清空记忆
+                if vision.base_miss_counter > 5:  # 连续超过 5 帧未检测到基地时清空记忆
                     vision.last_base_rects = []
-            # 用于过滤的基地矩形列表（优先用当前帧，否则用上一帧记忆）
+            # 使用最近一次检测到的基地矩形；连续丢失超过 5 帧后不再沿用。
             active_rects = vision.last_base_rects
             all_out_balls = []
             for obj in objs_filtered:
@@ -236,17 +234,16 @@ while not app.need_exit():
                 ball_cy = obj.y + obj.h / 2
                 in_base_area = False
                 
-                # 判断球中心是否落在任意基地矩形内
+                # 将水平范围内、中心位于基地顶边或下方的目标判入基地区域。
                 for bx, by, bw, bh in active_rects:
                     if bx <= ball_cx <= bx + bw and by <= ball_cy:
                         in_base_area = True
                         break
-                # 不在基地里才加入候选列表
+                # 仅将未落入上述基地区域的目标加入候选列表。
                 if not in_base_area:
                     all_out_balls.append(obj)
 
-            # ========== 核心修改：直接过滤掉敌方球，不再仅降优先级 ==========
-            # 只保留：己方球、黑球、黄球，彻底剔除敌方球
+            # 候选类别仅保留己方球、黑球和黄球。
             valid_balls = []
             for obj in all_out_balls:
                 cls = labels[obj.class_id]
@@ -262,9 +259,9 @@ while not app.need_exit():
                 elif (vision.team == blue_team and name == "blue") or (vision.team == red_team and name == "red"):
                     return 2
                 else:
-                    return 99  # 其他直接垫底
+                    return 99  # 其他类别使用最低优先级
             candidate_balls = []
-            # 按优先级从小到大排序
+            # 首次抓取仅保留己方球，随后按优先级排序。
             if first_catch_flag:
                 vision.go_on = 0
                 for obj in valid_balls:
@@ -288,7 +285,7 @@ while not app.need_exit():
         
         elif(current_mode == confirm_mode):
 
-            # 1. 筛选落在夹子区域内的球（取物体中心点判断）
+            # 按目标中心筛选落在夹爪区域内的球。
             clip_balls = []
             for obj in objs_filtered:
                 cls = labels[obj.class_id]
@@ -309,7 +306,7 @@ while not app.need_exit():
             black_cnt = clip_balls.count("black")
             vision.bolls_num = total_clip_ball
 
-            # 逻辑判断
+            # 根据球的类别、数量和首次抓取状态更新有效性与继续收集标志。
             vision.bolls_num = total_clip_ball
             if total_clip_ball > 0:
                 if has_enemy:
@@ -324,7 +321,7 @@ while not app.need_exit():
                         vision.go_on = 0
                         vision.is_valid = 0
                 else:
-                    # 无敌方、无黄色，只有己方+黑色
+                    # 区域内没有敌方球和黄球，仅包含己方球与黑球。
                     if self_cnt + black_cnt < max_bolls:
                         if first_catch_flag:
                             if self_cnt == 1 and total_clip_ball == 1:
@@ -367,10 +364,10 @@ while not app.need_exit():
                 vision.h = int(target.h)
                 vision.go_on = 0
 
-        # 打包成字节
+        # 保留原流程中的载荷打包，实际发送时 send() 会再次打包。
         buf = vision.pack()
 
-        # 每次发送前清空接收缓冲区，防止数据堆积
+        # 发送帧头和当前状态载荷，此调用不会清空接收缓冲区。
         vision.send(serial)
         
     # 左下角打印当前工作模式
