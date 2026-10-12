@@ -8,11 +8,7 @@
 #include "FreeRTOS.h"
 #include "cmsis_os.h"
 
-#define sin_work 0
 #define sin_motor_idx 0
-#define motor_work 0
-#define grab_bolls_work 0
-#define rudder_work 1
 
 #define no_target 0
 #define toward_target 1

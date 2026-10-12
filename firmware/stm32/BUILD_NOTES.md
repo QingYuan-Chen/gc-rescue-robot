@@ -1,5 +1,15 @@
 # 工程恢复与构建记录
 
+## 2026-10-12 阶段 1 最小运行基础
+
+新增 `App/`，当前固件只接入 GPIO 默认输出、TIM17 HAL 时基及 FreeRTOS 最小应用任务。旧业务已退出链接；有效 CMake 与 CLion 模板共用 `cmake/` 定义，源文件显式注册，编译选项按目标配置。
+
+Debug/Release 各完成 36/36 步构建；新模块进一步启用 `-Wall -Wextra -Werror` 后，各完成 4/4 步增量构建，均无警告，BIN 未变。Debug 为 17,788 字节，Release 为 18,616 字节，两者 RAM_D1 均为 23,272 字节。
+
+Debug 已通过无线 DAPLink 烧录、完整 Flash 回读、三次复位和基础运行观察。Release 仅完成构建。构建日志在 `build/<预设>/`，烧录、回读和运行日志在 `build/stage1-validation/`；固件标识及验收边界见[阶段 1 验证记录](../../docs/validation/2026-10-12-stage1-runtime.md)。
+
+当前协作规则为[工程规范 V1.2](../../docs/工程规范.md)：修改与验证完成后先交用户审核，确认后才执行 commit 或 push，稳定版本合入 `main` 也需授权。下方为此前的历史记录。
+
 ## 2026-10-12 注释统一与规范核查
 
 详细范围、未迁移的结构差异及验证证据见[核查记录](../../docs/validation/2026-10-12-comment-and-conventions-audit.md)。本次统一项目自有注释、纠正说明与实现不一致之处并移除废弃注释代码，保留旧文件编码、有效代码与构建参数。

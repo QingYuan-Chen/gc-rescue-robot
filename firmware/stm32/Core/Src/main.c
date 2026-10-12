@@ -19,13 +19,11 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
-#include "dma.h"
-#include "tim.h"
-#include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "robot_app.h"
 
 /* USER CODE END Includes */
 
@@ -95,21 +93,8 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
-  MX_TIM1_Init();
-  MX_TIM2_Init();
-  MX_TIM3_Init();
-  MX_TIM4_Init();
-  MX_TIM8_Init();
-  MX_TIM12_Init();
-  MX_TIM15_Init();
-  MX_USART1_UART_Init();
-  MX_USART2_UART_Init();
-  MX_USART3_UART_Init();
-  MX_TIM5_Init();
-  MX_TIM6_Init();
-  MX_UART5_Init();
   /* USER CODE BEGIN 2 */
+  robot_app_init();
 
   /* USER CODE END 2 */
 
@@ -124,6 +109,8 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  /* 调度器启动失败时进入错误入口，避免静默停留在空循环。 */
+  Error_Handler();
   while (1)
   {
     /* USER CODE END WHILE */
