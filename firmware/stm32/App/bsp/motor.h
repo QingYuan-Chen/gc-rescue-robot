@@ -14,4 +14,9 @@ bool motor_init(void);
  */
 void motor_set_duty_permille(wheel_id_t wheel, int32_t duty_permille);
 
+/* 仅致命故障入口使用：调用方先关闭中断，调用后停留至复位。
+ * 直接关闭 A/B 输出，不依赖任务调度或 HAL 句柄，外设初始化前也可调用。
+ */
+void motor_emergency_stop(void);
+
 #endif

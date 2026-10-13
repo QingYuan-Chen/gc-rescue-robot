@@ -76,3 +76,28 @@ bool motor_init(void)
     }
     return true;
 }
+
+void motor_emergency_stop(void)
+{
+    if (__HAL_RCC_TIM15_IS_CLK_ENABLED())
+    {
+        /* 保留通道使能，关闭主输出后由 OSSI 将 PWM 引脚保持在低电平空闲态。 */
+        CLEAR_BIT(WHEEL_PWM_INSTANCE->CR2, TIM_CR2_OIS1 | TIM_CR2_OIS2);
+        MODIFY_REG(WHEEL_PWM_INSTANCE->BDTR, TIM_BDTR_MOE | TIM_BDTR_AOE, TIM_BDTR_OSSI);
+        CLEAR_BIT(WHEEL_PWM_INSTANCE->CR1, TIM_CR1_CEN);
+        WHEEL_PWM_INSTANCE->CCR1 = 0U;
+        WHEEL_PWM_INSTANCE->CCR2 = 0U;
+    }
+    /* 按当前 A/B 板级映射清除方向脚；时钟未开启时不访问对应外设。 */
+    if (__HAL_RCC_GPIOE_IS_CLK_ENABLED())
+    {
+        WHEEL_A_IN1_PORT->BSRR = (uint32_t)(WHEEL_A_IN1_PIN | WHEEL_B_IN1_PIN | WHEEL_B_IN2_PIN)
+                                 << 16U;
+    }
+    if (__HAL_RCC_GPIOB_IS_CLK_ENABLED())
+    {
+        WHEEL_A_IN2_PORT->BSRR = (uint32_t)WHEEL_A_IN2_PIN << 16U;
+    }
+    /* 确认外设写入完成，再由故障入口停留。 */
+    __DSB();
+}

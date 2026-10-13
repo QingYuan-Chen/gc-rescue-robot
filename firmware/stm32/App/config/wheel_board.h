@@ -6,6 +6,8 @@
 
 /* PWM 频率、编码器滤波与引脚复用由 rescue.ioc 管理，不在此重复初始化。 */
 #define WHEEL_PWM_TIMER htim15
+/* 故障停机直接使用外设地址，不依赖 HAL 句柄的初始化状态。 */
+#define WHEEL_PWM_INSTANCE TIM15
 #define WHEEL_A_PWM_CHANNEL TIM_CHANNEL_1
 #define WHEEL_B_PWM_CHANNEL TIM_CHANNEL_2
 #define WHEEL_A_IN1_PORT AIN1_GPIO_Port

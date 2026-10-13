@@ -11,7 +11,7 @@ STM32H750 控制与 MaixCAM Pro 视觉的智能救援机器人项目。
 - 远端仓库：[QingYuan-Chen/gc-rescue-robot](https://github.com/QingYuan-Chen/gc-rescue-robot)。
 - 日常开发使用 `develop`；完成修改和验证后先交用户审核，确认后才提交或推送。阶段稳定版本经授权合入 `main`；远端名为 `origin`。
 - 重构位置：本仓库的 `firmware/stm32/`；同级 `../gc_rescue/` 保存本地原工程及烧录备份，不作为继续修复旧问题的工作项。
-- 当前状态：阶段 2 已完成软件实现和离线逻辑检查。重新连接无线 DAPLink 后，Debug 烧录、完整回读、10 ms 周期、双轮零输出及复位复测通过；接下来先验收 A 左轮，再逐项验收 B 轮和编码器。
+- 当前状态：2026-10-13 故障停机修复版 Debug 已完成烧录、完整回读、10 ms 周期、双轮零输出及复位复测。车轮运动测试保持暂停，运动反馈及实际故障关断仍待验收；详见[修复与烧录记录](docs/validation/2026-10-13-stage2-fault-stop.md)。
 - 验证记录：[UART5 无线调试](docs/validation/2026-10-12-uart5-debug.md)、[阶段 1 最小运行基础](docs/validation/2026-10-12-stage1-runtime.md)、[原工程构建与无线烧录](docs/validation/2026-10-11-original-firmware.md)。串口和基础运行验证不代表车轮或整车任务验收通过。
 - 本轮差异与未完成项：[阶段 2 及测试程序清理](docs/validation/2026-10-12-stage2-wheels.md)。已通过本次开发增量审核，逐轮运动验收仍待完成；生成副本清理此前被自动审批拦截，相关目录仍保留。
 

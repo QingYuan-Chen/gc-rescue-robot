@@ -26,6 +26,7 @@
 /* USER CODE BEGIN Includes */
 #include "usart.h"
 #include "robot_app.h"
+#include "bsp/motor.h"
 
 /* USER CODE END Includes */
 
@@ -247,8 +248,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
+  /* 故障时直接关闭车轮输出，不等待任务调度。 */
   __disable_irq();
+  motor_emergency_stop();
   while (1)
   {
   }
