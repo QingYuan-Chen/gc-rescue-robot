@@ -22,20 +22,32 @@ static wheel_drive_status_t current;
 
 bool wheel_drive_init(void)
 {
-    return motor_init() && encoder_init();
+    if (!motor_init() || !encoder_init())
+    {
+        return false;
+    }
+
+    /* 临时驱动排查：上电仅提交一次左右轮正向 30% 输出，60 秒后自动停止。
+     * 普通命令或停车命令可覆盖此请求，停止后不会自动重启；测试结束后删除。
+     */
+    taskENTER_CRITICAL();
+    pending_request = (wheel_request_t){{300, 300}, 60000U};
+    request_pending = true;
+    taskEXIT_CRITICAL();
+    return true;
 }
 
-bool wheel_drive_request(int32_t duty_a, int32_t duty_b, uint32_t duration_ms)
+bool wheel_drive_request(int32_t duty_left, int32_t duty_right, uint32_t duration_ms)
 {
-    if (duty_a < -WHEEL_MANUAL_MAX_DUTY_PERMILLE || duty_a > WHEEL_MANUAL_MAX_DUTY_PERMILLE ||
-        duty_b < -WHEEL_MANUAL_MAX_DUTY_PERMILLE || duty_b > WHEEL_MANUAL_MAX_DUTY_PERMILLE ||
-        duration_ms < WHEEL_PERIOD_MS || duration_ms > WHEEL_MANUAL_MAX_DURATION_MS ||
-        duration_ms % WHEEL_PERIOD_MS != 0U)
+    if (duty_left < -WHEEL_MANUAL_MAX_DUTY_PERMILLE || duty_left > WHEEL_MANUAL_MAX_DUTY_PERMILLE ||
+        duty_right < -WHEEL_MANUAL_MAX_DUTY_PERMILLE ||
+        duty_right > WHEEL_MANUAL_MAX_DUTY_PERMILLE || duration_ms < WHEEL_PERIOD_MS ||
+        duration_ms > WHEEL_MANUAL_MAX_DURATION_MS || duration_ms % WHEEL_PERIOD_MS != 0U)
     {
         return false;
     }
     taskENTER_CRITICAL();
-    pending_request = (wheel_request_t){{duty_a, duty_b}, duration_ms};
+    pending_request = (wheel_request_t){{duty_left, duty_right}, duration_ms};
     request_pending = true;
     taskEXIT_CRITICAL();
     return true;
@@ -75,7 +87,7 @@ void wheel_drive_step(uint32_t tick_ms)
     current.remaining_ms =
         active_request.duration_ms == 0U ? 0U : active_request.duration_ms - elapsed_ms;
     current.sample_tick_ms = tick_ms;
-    for (wheel_id_t wheel = WHEEL_A; wheel < WHEEL_COUNT; wheel++)
+    for (wheel_id_t wheel = WHEEL_LEFT; wheel < WHEEL_COUNT; wheel++)
     {
         current.delta_counts[wheel] = encoder_read_delta_counts(wheel, &current.raw_counts[wheel]);
         current.total_counts[wheel] += current.delta_counts[wheel];

@@ -13,10 +13,10 @@ typedef struct
 } motor_channel_t;
 
 static const motor_channel_t channels[WHEEL_COUNT] = {
-    {WHEEL_A_PWM_CHANNEL, WHEEL_A_IN1_PORT, WHEEL_A_IN1_PIN, WHEEL_A_IN2_PORT, WHEEL_A_IN2_PIN,
-     WHEEL_A_MOTOR_SIGN},
-    {WHEEL_B_PWM_CHANNEL, WHEEL_B_IN1_PORT, WHEEL_B_IN1_PIN, WHEEL_B_IN2_PORT, WHEEL_B_IN2_PIN,
-     WHEEL_B_MOTOR_SIGN},
+    {WHEEL_LEFT_PWM_CHANNEL, WHEEL_LEFT_IN1_PORT, WHEEL_LEFT_IN1_PIN, WHEEL_LEFT_IN2_PORT,
+     WHEEL_LEFT_IN2_PIN, WHEEL_LEFT_MOTOR_SIGN},
+    {WHEEL_RIGHT_PWM_CHANNEL, WHEEL_RIGHT_IN1_PORT, WHEEL_RIGHT_IN1_PIN, WHEEL_RIGHT_IN2_PORT,
+     WHEEL_RIGHT_IN2_PIN, WHEEL_RIGHT_MOTOR_SIGN},
 };
 static int32_t applied_duty[WHEEL_COUNT];
 
@@ -62,12 +62,12 @@ void motor_set_duty_permille(wheel_id_t wheel, int32_t duty_permille)
 
 bool motor_init(void)
 {
-    for (wheel_id_t wheel = WHEEL_A; wheel < WHEEL_COUNT; wheel++)
+    for (wheel_id_t wheel = WHEEL_LEFT; wheel < WHEEL_COUNT; wheel++)
     {
         __HAL_TIM_DISABLE_OCxPRELOAD(&WHEEL_PWM_TIMER, channels[wheel].channel);
         motor_set_duty_permille(wheel, 0);
     }
-    for (wheel_id_t wheel = WHEEL_A; wheel < WHEEL_COUNT; wheel++)
+    for (wheel_id_t wheel = WHEEL_LEFT; wheel < WHEEL_COUNT; wheel++)
     {
         if (HAL_TIM_PWM_Start(&WHEEL_PWM_TIMER, channels[wheel].channel) != HAL_OK)
         {
@@ -79,24 +79,29 @@ bool motor_init(void)
 
 void motor_emergency_stop(void)
 {
-    if (__HAL_RCC_TIM15_IS_CLK_ENABLED())
+    if (__HAL_RCC_GPIOB_IS_CLK_ENABLED())
     {
-        /* 保留通道使能，关闭主输出后由 OSSI 将 PWM 引脚保持在低电平空闲态。 */
-        CLEAR_BIT(WHEEL_PWM_INSTANCE->CR2, TIM_CR2_OIS1 | TIM_CR2_OIS2);
-        MODIFY_REG(WHEEL_PWM_INSTANCE->BDTR, TIM_BDTR_MOE | TIM_BDTR_AOE, TIM_BDTR_OSSI);
+        /* TIM12 没有主输出关断；先预置低电平，再将 PB14/PB15 从复用切为推挽输出。
+         * 仅停止计数器可能把 PWM 停在高电平，因此先接管引脚，故障后等待复位。
+         */
+        WHEEL_PWM_GPIO_PORT->BSRR = (uint32_t)WHEEL_PWM_GPIO_PINS << 16U;
+        CLEAR_BIT(WHEEL_PWM_GPIO_PORT->OTYPER, WHEEL_PWM_GPIO_PINS);
+        MODIFY_REG(WHEEL_PWM_GPIO_PORT->MODER, WHEEL_PWM_GPIO_MODE_MASK,
+                   WHEEL_PWM_GPIO_OUTPUT_MODE);
+    }
+    if (__HAL_RCC_TIM12_IS_CLK_ENABLED())
+    {
+        CLEAR_BIT(WHEEL_PWM_INSTANCE->CCER, TIM_CCER_CC1E | TIM_CCER_CC2E);
         CLEAR_BIT(WHEEL_PWM_INSTANCE->CR1, TIM_CR1_CEN);
         WHEEL_PWM_INSTANCE->CCR1 = 0U;
         WHEEL_PWM_INSTANCE->CCR2 = 0U;
     }
-    /* 按当前 A/B 板级映射清除方向脚；时钟未开启时不访问对应外设。 */
-    if (__HAL_RCC_GPIOE_IS_CLK_ENABLED())
+    /* C/D 的四个方向脚均在 GPIOD；时钟未开启时不访问对应外设。 */
+    if (__HAL_RCC_GPIOD_IS_CLK_ENABLED())
     {
-        WHEEL_A_IN1_PORT->BSRR = (uint32_t)(WHEEL_A_IN1_PIN | WHEEL_B_IN1_PIN | WHEEL_B_IN2_PIN)
-                                 << 16U;
-    }
-    if (__HAL_RCC_GPIOB_IS_CLK_ENABLED())
-    {
-        WHEEL_A_IN2_PORT->BSRR = (uint32_t)WHEEL_A_IN2_PIN << 16U;
+        WHEEL_LEFT_IN1_PORT->BSRR = (uint32_t)(WHEEL_LEFT_IN1_PIN | WHEEL_LEFT_IN2_PIN |
+                                               WHEEL_RIGHT_IN1_PIN | WHEEL_RIGHT_IN2_PIN)
+                                    << 16U;
     }
     /* 确认外设写入完成，再由故障入口停留。 */
     __DSB();

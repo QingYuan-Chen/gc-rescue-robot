@@ -3,8 +3,8 @@
 
 typedef enum
 {
-    WHEEL_A = 0,
-    WHEEL_B,
+    WHEEL_LEFT = 0,
+    WHEEL_RIGHT,
     WHEEL_COUNT
 } wheel_id_t;
 

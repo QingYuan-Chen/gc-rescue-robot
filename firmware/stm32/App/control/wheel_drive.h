@@ -19,10 +19,10 @@ typedef struct
 bool wheel_drive_init(void);
 void wheel_drive_step(uint32_t tick_ms);
 
-/* 提交完整 A/B 命令，在下一个周期执行；最后一条待处理命令生效。
+/* 按左、右顺序提交双轮命令，在下一个周期执行；最后一条待处理命令生效。
  * 手动入口限幅、限时，到期自动停车，避免无线链路中断后持续转动。
  */
-bool wheel_drive_request(int32_t duty_a, int32_t duty_b, uint32_t duration_ms);
+bool wheel_drive_request(int32_t duty_left, int32_t duty_right, uint32_t duration_ms);
 void wheel_drive_stop(void);
 void wheel_drive_get_status(wheel_drive_status_t *status);
 

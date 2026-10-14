@@ -55,7 +55,7 @@ def main():
                 raise RuntimeError("10 ms 周期检查未通过")
             if any(runtime[key] for key in ("delay_errors", "rx_errors", "tx_errors", "rx_overflow")):
                 raise RuntimeError("存在历史调度或串口错误，请查看输出记录")
-            if wheels["duty_a"] != 0 or wheels["duty_b"] != 0:
+            if wheels["duty_left"] != 0 or wheels["duty_right"] != 0:
                 raise RuntimeError("车轮当前有输出，请先停车再检查")
             result["passed"] = True
     except Exception as error:

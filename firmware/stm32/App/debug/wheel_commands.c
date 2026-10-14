@@ -47,14 +47,15 @@ void wheel_commands_format_status(char *response, size_t capacity)
     wheel_drive_get_status(&status);
     snprintf(response, capacity,
              "OK wheel tick_ms=%lu period_ms=%u remaining_ms=%lu "
-             "duty_a=%ld duty_b=%ld delta_a=%ld delta_b=%ld "
-             "total_a=%lld total_b=%lld raw_a=%lu raw_b=%lu\r\n",
+             "duty_left=%ld duty_right=%ld delta_left=%ld delta_right=%ld "
+             "total_left=%lld total_right=%lld raw_left=%lu raw_right=%lu\r\n",
              (unsigned long)status.sample_tick_ms, WHEEL_PERIOD_MS,
-             (unsigned long)status.remaining_ms, (long)status.duty_permille[WHEEL_A],
-             (long)status.duty_permille[WHEEL_B], (long)status.delta_counts[WHEEL_A],
-             (long)status.delta_counts[WHEEL_B], (long long)status.total_counts[WHEEL_A],
-             (long long)status.total_counts[WHEEL_B], (unsigned long)status.raw_counts[WHEEL_A],
-             (unsigned long)status.raw_counts[WHEEL_B]);
+             (unsigned long)status.remaining_ms, (long)status.duty_permille[WHEEL_LEFT],
+             (long)status.duty_permille[WHEEL_RIGHT], (long)status.delta_counts[WHEEL_LEFT],
+             (long)status.delta_counts[WHEEL_RIGHT], (long long)status.total_counts[WHEEL_LEFT],
+             (long long)status.total_counts[WHEEL_RIGHT],
+             (unsigned long)status.raw_counts[WHEEL_LEFT],
+             (unsigned long)status.raw_counts[WHEEL_RIGHT]);
 }
 
 bool wheel_commands_execute(const char *line, char *response, size_t capacity)
@@ -76,22 +77,22 @@ bool wheel_commands_execute(const char *line, char *response, size_t capacity)
     }
 
     const bool both = strncmp(line, "wheel both ", 11U) == 0;
-    const bool wheel_a = strncmp(line, "wheel a ", 8U) == 0;
-    const bool wheel_b = strncmp(line, "wheel b ", 8U) == 0;
-    if (both || wheel_a || wheel_b)
+    const bool left = strncmp(line, "wheel left ", 11U) == 0;
+    const bool right = strncmp(line, "wheel right ", 12U) == 0;
+    if (both || left || right)
     {
-        const char *cursor = line + (both ? 11U : 8U);
+        const char *cursor = line + (right ? 12U : 11U);
         int32_t first, second = 0, duration;
         if (parse_integer(&cursor, &first) && (!both || parse_integer(&cursor, &second)) &&
             parse_integer(&cursor, &duration) && *cursor == '\0' && duration > 0 &&
-            wheel_drive_request(wheel_b ? 0 : first, wheel_b ? first : second, (uint32_t)duration))
+            wheel_drive_request(right ? 0 : first, right ? first : second, (uint32_t)duration))
         {
             snprintf(response, capacity, "OK wheel command queued\r\n");
             return true;
         }
     }
     snprintf(response, capacity,
-             "ERR wheel: status | stop | a/b <duty> <ms> | both <a> <b> <ms>; "
+             "ERR wheel: status | stop | left/right <duty> <ms> | both <left> <right> <ms>; "
              "duty=-%d..%d ms=%u..%u step=%u\r\n",
              WHEEL_MANUAL_MAX_DUTY_PERMILLE, WHEEL_MANUAL_MAX_DUTY_PERMILLE, WHEEL_PERIOD_MS,
              WHEEL_MANUAL_MAX_DURATION_MS, WHEEL_PERIOD_MS);

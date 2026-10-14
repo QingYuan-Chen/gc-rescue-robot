@@ -115,7 +115,8 @@ static void execute_line(char *line)
     if (strcmp(line, "help") == 0)
     {
         write_text("OK help: ping | status | get report_ms | set report_ms <0|100..60000> | "
-                   "wheel status/stop | wheel a/b <duty> <ms> | wheel both <a> <b> <ms>\r\n");
+                   "wheel status/stop | wheel left/right <duty> <ms> | "
+                   "wheel both <left> <right> <ms>\r\n");
     }
     else if (strcmp(line, "ping") == 0)
     {
