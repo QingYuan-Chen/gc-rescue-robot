@@ -30,8 +30,8 @@
 /* 现场旧正输出使两轮后退，故两路电机均取反；正命令改为 IN1 低、IN2 高。 */
 #define WHEEL_LEFT_MOTOR_SIGN -1
 #define WHEEL_RIGHT_MOTOR_SIGN -1
-/* 编码器随插座交换左右归属，计数方向暂不取反，待逐轮前进时实测确认。 */
+/* 逐轮实测：前进时左轮原始计数增加、右轮减少，统一为前进增量为正。 */
 #define WHEEL_LEFT_ENCODER_SIGN 1
-#define WHEEL_RIGHT_ENCODER_SIGN 1
+#define WHEEL_RIGHT_ENCODER_SIGN -1
 
 #endif
