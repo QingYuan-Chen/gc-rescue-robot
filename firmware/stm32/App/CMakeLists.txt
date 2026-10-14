@@ -4,7 +4,9 @@ set(app_sources
     bsp/debug_uart.c
     bsp/motor.c
     bsp/encoder.c
+    control/pid.c
     control/wheel_drive.c
+    control/wheel_pid.c
     debug/debug_console.c
     debug/wheel_commands.c
     runtime/runtime_monitor.c
