@@ -22,19 +22,7 @@ static wheel_drive_status_t current;
 
 bool wheel_drive_init(void)
 {
-    if (!motor_init() || !encoder_init())
-    {
-        return false;
-    }
-
-    /* 临时驱动排查：上电仅提交一次左右轮正向 30% 输出，60 秒后自动停止。
-     * 普通命令或停车命令可覆盖此请求，停止后不会自动重启；测试结束后删除。
-     */
-    taskENTER_CRITICAL();
-    pending_request = (wheel_request_t){{300, 300}, 60000U};
-    request_pending = true;
-    taskEXIT_CRITICAL();
-    return true;
+    return motor_init() && encoder_init();
 }
 
 bool wheel_drive_request(int32_t duty_left, int32_t duty_right, uint32_t duration_ms)
