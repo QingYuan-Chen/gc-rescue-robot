@@ -21,7 +21,7 @@
 | [OpenOCD 配置](../../firmware/stm32/stm32h750vbt6.cfg) | 容量说明写为 64 KiB，但配置为 `0x20000` | 修正为 128 KiB，并明确 `adapter speed` 的单位；参数不变 |
 | [PID](../../firmware/stm32/gc_rescue/Motor/pid.h)、[电机](../../firmware/stm32/gc_rescue/Motor/motor.c)、[正弦测试](../../firmware/stm32/gc_rescue/Motor/sin_generate.h) | 反馈、输出、时间及相位的尺度不清楚 | 补充采样周期内的编码器计数、CCR 计数、按调用次数更新以及角度单位，避免迁移时误作物理速度或秒 |
 | 各任务及延时接口 | 栈深度单位不清楚；抓取任务被描述为精准 10 ms；舵机预留周期没有实际参与调度 | 明确 `StackType_t` 元素数、标称调度周期与阻塞延时的区别，以及 `osDelay` 的节拍单位 |
-| [启动与调试入口](../../firmware/stm32/gc_rescue/car_task.c) | `GET_free_RAM()` 的说明声称读取并打印剩余栈，但实际只延时 | 注释按现有行为修正，移除被注释掉的打印语句 |
+| [原工程历史启动与调试入口](https://github.com/QingYuan-Chen/gc-rescue-robot/blob/9312925/firmware/stm32/gc_rescue/car_task.c) | `GET_free_RAM()` 的说明声称读取并打印剩余栈，但实际只延时 | 注释按当时行为修正，移除被注释掉的打印语句；该文件已在阶段 1 从当前重构目录删除 |
 
 同时移除了 CMake 中闲置的浮点配置样例、注释掉的舵机试验调用和视觉调试打印，并把旧“操作步骤”“本次核心修改”等过程性注释改成当前实现的说明。保留仍在使用的源文件及配置分支。
 
@@ -34,7 +34,7 @@
 | 模块依赖范围过大、共享状态暴露 | [common.h](../../firmware/stm32/gc_rescue/common.h) 第 4–9 行直接引入硬件和 RTOS 头文件，第 43–51 行公开整车 `my_car`；视觉接收、IMU、舵机及任务层直接访问字段。修改一种业务状态容易影响多个模块，数据交接也缺少统一接口。 | 阶段 1 建立新模块边界；阶段 2–6 按设备逐项封装，明确生产者、消费者和快照交接方式。 |
 | 多种职责集中在同一文件 | [motor.c](../../firmware/stm32/gc_rescue/Motor/motor.c) 同时包含编码器、GPIO/PWM、PID 参数和视觉跟踪决策；[视觉脚本](../../vision/maixcam/main.py) 同时负责设备初始化、模型路径、串口协议、界面和旧赛项策略。问题在于变化原因混杂，不以文件行数作为拆分依据。 | 阶段 2 提取底层驱动，阶段 3–5 接入控制；阶段 7–8 分开视觉配置、协议、感知与任务策略。 |
 | 执行器输出归属尚未统一 | [motor.c](../../firmware/stm32/gc_rescue/Motor/motor.c) 的 `motor_set_pwm()` 与 [rudder_control.c](../../firmware/stm32/gc_rescue/Rudder_control/rudder_control.c) 的 `rudder_control()` 都直接写 `TIM1->CCR*`；旧四通道和旧姿态接口也尚未映射到新 A/B、Servo1/Servo2 模块。 | 阶段 2、6 分别按已确认的硬件映射建立唯一输出写入模块；新实现接管后停止对应旧入口。 |
-| 公开接口与实现存在残留差异，命名尚未迁移 | [motor.h](../../firmware/stm32/gc_rescue/Motor/motor.h) 第 44–45 行声明 `Vision_w_*`，实现为 `Vision_y_*`；[sin_generate.h](../../firmware/stm32/gc_rescue/Motor/sin_generate.h) 第 18 行声明 `sin_handler`，实现定义 `sin_task_handler`；[car_task.h](../../firmware/stm32/gc_rescue/car_task.h) 重复引入舵机头文件。还存在 `__PID_H` 等保留形式的保护宏及混合命名。未引用的声明不代表当前发生链接失败，但会误导接口使用者。 | 对应模块迁移时收敛公开接口，核对声明、定义和调用方，内部状态改为私有；按新命名规则替换并清理旧声明。 |
+| 公开接口与实现存在残留差异，命名尚未迁移 | [motor.h](../../firmware/stm32/gc_rescue/Motor/motor.h) 第 44–45 行声明 `Vision_w_*`，实现为 `Vision_y_*`；[sin_generate.h](../../firmware/stm32/gc_rescue/Motor/sin_generate.h) 第 18 行声明 `sin_handler`，实现定义 `sin_task_handler`；已归档的原工程 `car_task.h` 重复引入舵机头文件。还存在 `__PID_H` 等保留形式的保护宏及混合命名。未引用的声明不代表当前发生链接失败，但会误导接口使用者。 | 对应模块迁移时收敛公开接口，核对声明、定义和调用方，内部状态改为私有；按新命名规则替换并清理旧声明。 |
 | 调度与中断职责尚未分层 | [rudder_task()](../../firmware/stm32/gc_rescue/Rudder_control/rudder_control.c) 当前循环没有等待；[视觉中断](../../firmware/stm32/gc_rescue/Maixcam/maixcam.c) 和 [IMU 中断](../../firmware/stm32/gc_rescue/Jy61/gyro.c) 直接解析并写共享业务状态。注释已如实说明，原行为保留。 | 阶段 1 的新最小任务先验证调度；阶段 5、6 将接收、中断通知、解析和数据交接分开实现。 |
 | 构建仍沿用自动扫描和双份配置 | [主 CMake](../../firmware/stm32/CMakeLists.txt) 第 50 行使用递归扫描，参考模块也使用 `GLOB`；主工程存在目录级编译选项。[生成模板](../../firmware/stm32/CMakeLists_template.txt) 未包含现行硬浮点选项及 `add_subdirectory(gc_rescue)`，重新生成时可能丢失有效接入。 | 阶段 1 建立新模块的显式源文件列表和目标级配置；涉及生成流程时同步有效构建入口、模板及中断归属，并实际验证再生成结果。 |
 

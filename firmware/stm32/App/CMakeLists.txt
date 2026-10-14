@@ -9,6 +9,7 @@ set(app_sources
     control/wheel_pid.c
     debug/debug_console.c
     debug/wheel_commands.c
+    debug/wheel_status.c
     runtime/runtime_monitor.c
 )
 target_sources(rescue.elf PRIVATE ${app_sources})

@@ -22,8 +22,17 @@ def query(port, command, prefix):
 
 
 def fields(line):
-    return {key: int(value) for key, value in
-            (item.split("=", 1) for item in line.split()[2:])}
+    result = {}
+    for item in line.split()[2:]:
+        key, value = item.split("=", 1)
+        try:
+            result[key] = int(value)
+        except ValueError:
+            try:
+                result[key] = float(value)
+            except ValueError:
+                result[key] = value
+    return result
 
 
 def main():
@@ -55,8 +64,13 @@ def main():
                 raise RuntimeError("10 ms 周期检查未通过")
             if any(runtime[key] for key in ("delay_errors", "rx_errors", "tx_errors", "rx_overflow")):
                 raise RuntimeError("存在历史调度或串口错误，请查看输出记录")
-            if wheels["duty_left"] != 0 or wheels["duty_right"] != 0:
-                raise RuntimeError("车轮当前有输出，请先停车再检查")
+            if wheels["mode"] != "stop" or wheels["ready"] != 1 or wheels["fault"] != 0:
+                raise RuntimeError("车轮未处于正常停车状态，请查看模式与故障原因")
+            if any(wheels[key] != 0 for key in (
+                "duty_left", "duty_right", "request_left", "request_right", "remaining_ms",
+                "enable_left", "enable_right", "pid_left", "pid_right", "transition",
+            )):
+                raise RuntimeError("停车输出或控制状态未清理完成")
             result["passed"] = True
     except Exception as error:
         result["error"] = str(error)
@@ -64,7 +78,7 @@ def main():
     finally:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"通过：{args.port}，链路正常、周期 10 ms、双轮输出为零。记录：{args.output}")
+    print(f"通过：{args.port}，链路正常、周期 10 ms、已执行停车且无故障。记录：{args.output}")
 
 
 if __name__ == "__main__":

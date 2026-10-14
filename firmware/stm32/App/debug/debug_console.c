@@ -1,5 +1,6 @@
 #include "debug_console.h"
 #include "wheel_commands.h"
+#include "wheel_status.h"
 
 #include "bsp/debug_uart.h"
 #include "runtime/runtime_monitor.h"
@@ -18,6 +19,8 @@
 /* 当前仅调试任务访问；参数只保存在 RAM，复位后关闭自动上报。 */
 static uint32_t report_ms;
 static uint32_t last_report_tick;
+/* 仅由调试任务复用，避免扩展状态字符串占用调用链上的任务栈。 */
+static char response[1024];
 
 static void write_text(const char *text)
 {
@@ -28,7 +31,6 @@ static void report_status(void)
 {
     runtime_monitor_status_t runtime;
     debug_uart_status_t uart;
-    char response[512];
     runtime_monitor_get_status(&runtime);
     debug_uart_get_status(&uart);
 
@@ -52,7 +54,7 @@ static void report_status(void)
     {
         debug_uart_write(response, (uint16_t)length);
     }
-    wheel_commands_format_status(response, sizeof(response));
+    wheel_status_format(response, sizeof(response));
     write_text(response);
 }
 
@@ -106,17 +108,18 @@ static void execute_line(char *line)
     {
         return;
     }
-    char wheel_response[320];
-    if (wheel_commands_execute(line, wheel_response, sizeof(wheel_response)))
+    if (wheel_commands_execute(line, response, sizeof(response)))
     {
-        write_text(wheel_response);
+        write_text(response);
         return;
     }
     if (strcmp(line, "help") == 0)
     {
         write_text("OK help: ping | status | get report_ms | set report_ms <0|100..60000> | "
                    "wheel status/stop | wheel left/right <duty> <ms> | "
-                   "wheel both <left> <right> <ms>\r\n");
+                   "wheel both <left> <right> <ms> | "
+                   "wheel speed left/right <counts> <ms> | "
+                   "wheel speed both <left_counts> <right_counts> <ms>\r\n");
     }
     else if (strcmp(line, "ping") == 0)
     {
