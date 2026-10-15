@@ -31,18 +31,18 @@ static wheel_drive_status_t snapshot;
 /* 以下状态只由车轮任务修改；PID、期限和换向使用同一周期推进。 */
 static wheel_request_t active_request;
 static uint32_t started_tick_ms;
-static pid_incremental_state_t pid[WHEEL_COUNT];
+static wheel_pid_t pid[WHEEL_COUNT];
 static wheel_drive_status_t current;
 
 static void reset_controllers(void)
 {
     for (wheel_id_t wheel = WHEEL_LEFT; wheel < WHEEL_COUNT; wheel++)
     {
-        pid_incremental_reset(&pid[wheel]);
+        wheel_pid_reset(&pid[wheel]);
     }
 }
 
-bool wheel_drive_init(void)
+bool wheel_drive_init(const pid_pi_params_t params[WHEEL_COUNT])
 {
     pending_request = (wheel_request_t){0};
     active_request = (wheel_request_t){0};
@@ -54,7 +54,10 @@ bool wheel_drive_init(void)
     period_fault = false;
     last_reject_reason = WHEEL_REQUEST_ACCEPTED;
     started_tick_ms = 0U;
-    reset_controllers();
+    for (wheel_id_t wheel = WHEEL_LEFT; wheel < WHEEL_COUNT; wheel++)
+    {
+        wheel_pid_init(&pid[wheel], &params[wheel]);
+    }
     return motor_init() && encoder_init();
 }
 
@@ -182,7 +185,7 @@ static void adopt_request(const wheel_request_t *request, uint32_t tick_ms)
             if (active_request.enabled[wheel] != request->enabled[wheel])
             {
                 /* 单轮验收换侧时清理被停用/新启用的实例，连续启用侧保留历史。 */
-                pid_incremental_reset(&pid[wheel]);
+                wheel_pid_reset(&pid[wheel]);
             }
         }
     }
@@ -199,43 +202,51 @@ static void update_outputs(void)
         current.target_milli_counts[wheel] = active_request.target_milli_counts[wheel];
         current.limited[wheel] = false;
         current.reversing[wheel] = false;
-        int32_t requested = 0;
+        float requested = 0.0f;
+        const bool run_pi = !current.transitioning && current.enabled[wheel] &&
+                            current.mode == WHEEL_MODE_SPEED_LOOP;
         if (!current.transitioning && current.enabled[wheel])
         {
             if (current.mode == WHEEL_MODE_SPEED_LOOP)
             {
-                requested = wheel_pid_step_duty_permille(
-                    &pid[wheel], (float)current.target_milli_counts[wheel] / 1000.0f,
-                    current.delta_counts[wheel]);
+                requested = wheel_pid_prepare(&pid[wheel],
+                                              (float)current.target_milli_counts[wheel] / 1000.0f,
+                                              current.delta_counts[wheel]);
             }
             else if (current.mode == WHEEL_MODE_OPEN_LOOP)
             {
-                requested = active_request.duty_permille[wheel];
+                requested = (float)active_request.duty_permille[wheel];
             }
         }
-        current.pid_output_counts[wheel] = pid[wheel].output;
-        current.requested_duty_permille[wheel] = requested;
-        int32_t applied = requested;
+        float bounded = requested;
         if (current.mode == WHEEL_MODE_SPEED_LOOP)
         {
-            if (applied > WHEEL_SPEED_MAX_DUTY_PERMILLE)
+            if (bounded > WHEEL_SPEED_MAX_DUTY_PERMILLE)
             {
-                applied = WHEEL_SPEED_MAX_DUTY_PERMILLE;
+                bounded = WHEEL_SPEED_MAX_DUTY_PERMILLE;
             }
-            else if (applied < -WHEEL_SPEED_MAX_DUTY_PERMILLE)
+            else if (bounded < -WHEEL_SPEED_MAX_DUTY_PERMILLE)
             {
-                applied = -WHEEL_SPEED_MAX_DUTY_PERMILLE;
+                bounded = -WHEEL_SPEED_MAX_DUTY_PERMILLE;
             }
-            current.limited[wheel] = applied != requested;
+            current.limited[wheel] = bounded != requested;
         }
+        /* 浮点输出先限幅再转整数；普通 PWM 量化不触发抗饱和回算。 */
+        int32_t applied = (int32_t)bounded;
+        current.requested_duty_permille[wheel] = applied;
         if (applied * current.duty_permille[wheel] < 0)
         {
             current.reversing[wheel] = true;
             applied = 0;
         }
-        /* 限幅与换向只作用于实际输出，不反写 PID 的累计输出。 */
         motor_set_duty_permille(wheel, applied);
         current.duty_permille[wheel] = applied;
+        if (run_pi)
+        {
+            wheel_pid_track(&pid[wheel], applied,
+                            current.limited[wheel] || current.reversing[wheel]);
+        }
+        wheel_pid_get_status(&pid[wheel], &current.pi[wheel]);
     }
 }
 

@@ -60,6 +60,8 @@ def main():
                 raise RuntimeError(f"没有收到车轮状态：{wheel_line!r}")
             result["wheels"] = fields(wheel_line)
             runtime, wheels = result["runtime"], result["wheels"]
+            if wheels.get("controller") != "pi" or wheels.get("output_unit") != "permille":
+                raise RuntimeError("固件不是当前 PI 状态协议，请使用对应版本的检查工具")
             if runtime["period_ticks"] != 10 or runtime["min"] != 10 or runtime["max"] != 10:
                 raise RuntimeError("10 ms 周期检查未通过")
             if any(runtime[key] for key in ("delay_errors", "rx_errors", "tx_errors", "rx_overflow")):
@@ -68,7 +70,8 @@ def main():
                 raise RuntimeError("车轮未处于正常停车状态，请查看模式与故障原因")
             if any(wheels[key] != 0 for key in (
                 "duty_left", "duty_right", "request_left", "request_right", "remaining_ms",
-                "enable_left", "enable_right", "pid_left", "pid_right", "transition",
+                "enable_left", "enable_right", "pi_left", "pi_right", "transition",
+                "p_left", "p_right", "i_left", "i_right", "i_next_left", "i_next_right",
             )):
                 raise RuntimeError("停车输出或控制状态未清理完成")
             result["passed"] = True

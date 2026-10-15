@@ -2,6 +2,7 @@
 #define ROBOT_WHEEL_DRIVE_H
 
 #include "bsp/wheel_types.h"
+#include "wheel_pid.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -52,7 +53,7 @@ typedef struct
     bool limited[WHEEL_COUNT];
     bool reversing[WHEEL_COUNT];
     int32_t target_milli_counts[WHEEL_COUNT];
-    float pid_output_counts[WHEEL_COUNT];
+    wheel_pid_status_t pi[WHEEL_COUNT];
     int32_t requested_duty_permille[WHEEL_COUNT];
     int32_t duty_permille[WHEEL_COUNT];
     int32_t delta_counts[WHEEL_COUNT];
@@ -60,7 +61,8 @@ typedef struct
     uint32_t raw_counts[WHEEL_COUNT];
 } wheel_drive_status_t;
 
-bool wheel_drive_init(void);
+/* 初始化时复制每轮参数；运行中不从其他任务直接修改控制器内部状态。 */
+bool wheel_drive_init(const pid_pi_params_t params[WHEEL_COUNT]);
 /* 初始化后立即调用一次建立采样基线，此后仅由唯一 10 ms 任务调用。
  * 错过调度或实际间隔异常时停车并禁止运动，排查后复位才能解除。
  */

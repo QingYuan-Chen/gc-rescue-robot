@@ -2,6 +2,7 @@
 
 #include "bsp/board_startup.h"
 #include "config/wheel_config.h"
+#include "config/wheel_pid_config.h"
 #include "control/wheel_drive.h"
 #include "runtime/runtime_monitor.h"
 
@@ -15,7 +16,7 @@ void robot_app_init(void)
 
 void robot_app_run(void)
 {
-    if (!wheel_drive_init())
+    if (!wheel_drive_init(wheel_pid_defaults))
     {
         Error_Handler();
     }

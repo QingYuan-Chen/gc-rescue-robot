@@ -16,9 +16,12 @@ void wheel_status_format(char *response, size_t capacity)
     const int length = snprintf(
         response, capacity,
         "OK wheel tick_ms=%lu period_ms=%u interval_ms=%lu remaining_ms=%lu "
-        "mode=%s source=%s ready=%u fault=%u transition=%u stop=%s reject=%s "
+        "mode=%s source=%s controller=pi output_unit=permille ready=%u fault=%u "
+        "transition=%u stop=%s reject=%s "
         "enable_left=%u enable_right=%u target_left_milli=%ld target_right_milli=%ld "
-        "pid_left=%.3f pid_right=%.3f request_left=%ld request_right=%ld "
+        "p_left=%.3f p_right=%.3f i_left=%.3f i_right=%.3f "
+        "i_next_left=%.3f i_next_right=%.3f pi_left=%.3f pi_right=%.3f "
+        "request_left=%ld request_right=%ld "
         "duty_left=%ld duty_right=%ld limited_left=%u limited_right=%u "
         "reverse_left=%u reverse_right=%u delta_left=%ld delta_right=%ld "
         "total_left=%lld total_right=%lld raw_left=%lu raw_right=%lu\r\n",
@@ -29,7 +32,14 @@ void wheel_status_format(char *response, size_t capacity)
         stops[status.last_stop_reason], rejections[status.last_reject_reason],
         (unsigned)status.enabled[WHEEL_LEFT], (unsigned)status.enabled[WHEEL_RIGHT],
         (long)status.target_milli_counts[WHEEL_LEFT], (long)status.target_milli_counts[WHEEL_RIGHT],
-        (double)status.pid_output_counts[WHEEL_LEFT], (double)status.pid_output_counts[WHEEL_RIGHT],
+        (double)status.pi[WHEEL_LEFT].proportional_permille,
+        (double)status.pi[WHEEL_RIGHT].proportional_permille,
+        (double)status.pi[WHEEL_LEFT].integral_permille,
+        (double)status.pi[WHEEL_RIGHT].integral_permille,
+        (double)status.pi[WHEEL_LEFT].next_integral_permille,
+        (double)status.pi[WHEEL_RIGHT].next_integral_permille,
+        (double)status.pi[WHEEL_LEFT].output_permille,
+        (double)status.pi[WHEEL_RIGHT].output_permille,
         (long)status.requested_duty_permille[WHEEL_LEFT],
         (long)status.requested_duty_permille[WHEEL_RIGHT], (long)status.duty_permille[WHEEL_LEFT],
         (long)status.duty_permille[WHEEL_RIGHT], (unsigned)status.limited[WHEEL_LEFT],

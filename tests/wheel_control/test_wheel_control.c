@@ -1,10 +1,12 @@
 #include "bsp/encoder.h"
 #include "bsp/motor.h"
+#include "config/wheel_pid_config.h"
 #include "control/wheel_drive.h"
 #include "debug/wheel_commands.h"
 #include "debug/wheel_status.h"
 
 #include <stdio.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -16,6 +18,12 @@ static int32_t feedback[WHEEL_COUNT];
 static uint32_t raw[WHEEL_COUNT];
 static int32_t output[WHEEL_COUNT];
 static wheel_drive_status_t status;
+
+/* 仅供主机契约测试，不进入固件，也不代表电机已整定参数。 */
+static const pid_pi_params_t test_params[WHEEL_COUNT] = {
+    {.kp = 80.0f, .ki = 400.0f, .tracking_gain_per_s = 10.0f},
+    {.kp = 80.0f, .ki = 400.0f, .tracking_gain_per_s = 10.0f},
+};
 
 /* 不用 assert，保证优化构建也执行契约检查。 */
 #define CHECK(condition)                                                                           \
@@ -81,7 +89,7 @@ static void sample(uint32_t interval, int32_t left, int32_t right, bool delayed)
 static void start_at(uint32_t initial_tick)
 {
     tick = initial_tick;
-    CHECK(wheel_drive_init());
+    CHECK(wheel_drive_init(test_params));
     sample(0, 0, 0, false);
     CHECK(status.ready && status.mode == WHEEL_MODE_STOP && !status.period_fault);
 }
@@ -99,7 +107,10 @@ static void expect_stopped(wheel_stop_reason_t reason)
     for (wheel_id_t wheel = WHEEL_LEFT; wheel < WHEEL_COUNT; wheel++)
     {
         CHECK(!status.enabled[wheel] && output[wheel] == 0);
-        CHECK(status.pid_output_counts[wheel] == 0 && status.target_milli_counts[wheel] == 0);
+        CHECK(status.pi[wheel].output_permille == 0 && status.target_milli_counts[wheel] == 0);
+        CHECK(status.pi[wheel].proportional_permille == 0);
+        CHECK(status.pi[wheel].integral_permille == 0 &&
+              status.pi[wheel].next_integral_permille == 0);
         CHECK(status.requested_duty_permille[wheel] == 0);
     }
 }
@@ -107,7 +118,7 @@ static void expect_stopped(wheel_stop_reason_t reason)
 static void boot_and_validation(void)
 {
     cases++;
-    CHECK(wheel_drive_init());
+    CHECK(wheel_drive_init(test_params));
     CHECK(wheel_drive_request_open_loop(100, 0, 100) == WHEEL_REQUEST_NOT_READY);
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_LEFT, 1000, 0, 100) == WHEEL_REQUEST_NOT_READY);
     tick = 0;
@@ -156,23 +167,25 @@ static void zero_target_and_reversal(void)
     start_case();
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_LEFT, 1000, 0, 100) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 7, false);
-    CHECK(status.pid_output_counts[0] == 1780 && status.requested_duty_permille[0] == 799);
-    CHECK(output[0] == 250 && status.limited[0]);
-    CHECK(!status.enabled[1] && status.pid_output_counts[1] == 0 && output[1] == 0);
+    CHECK(status.pi[0].output_permille == 80 && status.requested_duty_permille[0] == 80);
+    CHECK(output[0] == 80 && !status.limited[0]);
+    CHECK(!status.enabled[1] && status.pi[1].output_permille == 0 && output[1] == 0);
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_LEFT, 0, 0, 100) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 0, false);
-    CHECK(status.mode == WHEEL_MODE_SPEED_LOOP && status.pid_output_counts[0] == 180);
-    CHECK(output[0] == 90 && !status.limited[0]);
+    CHECK(status.mode == WHEEL_MODE_SPEED_LOOP && status.pi[0].output_permille == 4);
+    CHECK(output[0] == 4 && !status.limited[0]);
     sample(10, 2, 0, false);
-    CHECK(status.pid_output_counts[0] == -3380 && status.reversing[0] && output[0] == 0);
+    CHECK(status.pi[0].output_permille == -156 && status.reversing[0] && output[0] == 0);
+    CHECK(fabsf(status.pi[0].next_integral_permille - 11.6f) < 0.001f);
     sample(10, 2, 0, false);
-    CHECK(status.pid_output_counts[0] == -3380 && !status.reversing[0] && output[0] == -250);
+    CHECK(fabsf(status.pi[0].output_permille + 148.4f) < 0.001f);
+    CHECK(!status.reversing[0] && output[0] == -148);
     wheel_drive_stop();
     sample(10, 0, 0, false);
     expect_stopped(WHEEL_STOP_COMMAND);
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_LEFT, 0, 0, 100) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 0, false);
-    CHECK(status.pid_output_counts[0] == 0 && status.mode == WHEEL_MODE_SPEED_LOOP);
+    CHECK(status.pi[0].output_permille == 0 && status.mode == WHEEL_MODE_SPEED_LOOP);
 }
 
 static void independent_controllers(void)
@@ -180,19 +193,19 @@ static void independent_controllers(void)
     start_case();
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_BOTH, 250, -250, 100) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 0, false);
-    CHECK(status.pid_output_counts[0] == 445 && status.pid_output_counts[1] == -445);
-    CHECK(output[0] == 222 && output[1] == -222);
+    CHECK(status.pi[0].output_permille == 20 && status.pi[1].output_permille == -20);
+    CHECK(output[0] == 20 && output[1] == -20);
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_LEFT, 250, 0, 100) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 8, false);
-    CHECK(status.pid_output_counts[0] == 490 && output[0] == 245);
-    CHECK(!status.enabled[1] && status.pid_output_counts[1] == 0 && output[1] == 0);
+    CHECK(status.pi[0].output_permille == 21 && output[0] == 21);
+    CHECK(!status.enabled[1] && status.pi[1].output_permille == 0 && output[1] == 0);
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_BOTH, 250, -250, 100) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 0, false);
-    CHECK(status.pid_output_counts[0] == 535 && status.pid_output_counts[1] == -445);
+    CHECK(status.pi[0].output_permille == 22 && status.pi[1].output_permille == -20);
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_RIGHT, 0, -250, 100) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 8, 0, false);
-    CHECK(!status.enabled[0] && status.pid_output_counts[0] == 0 && output[0] == 0);
-    CHECK(status.pid_output_counts[1] == -490);
+    CHECK(!status.enabled[0] && status.pi[0].output_permille == 0 && output[0] == 0);
+    CHECK(status.pi[1].output_permille == -21);
 }
 
 static void transitions_and_stop_priority(void)
@@ -203,12 +216,12 @@ static void transitions_and_stop_priority(void)
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_BOTH, 250, 250, 30) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 0, false);
     CHECK(status.transitioning && status.remaining_ms == 30 && output[0] == 0 && output[1] == 0);
-    CHECK(status.pid_output_counts[0] == 0);
+    CHECK(status.pi[0].output_permille == 0);
     sample(10, 0, 0, false);
-    CHECK(!status.transitioning && status.remaining_ms == 20 && output[0] == 222);
+    CHECK(!status.transitioning && status.remaining_ms == 20 && output[0] == 20);
     CHECK(wheel_drive_request_open_loop(-100, -100, 20) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 0, false);
-    CHECK(status.transitioning && output[0] == 0 && status.pid_output_counts[0] == 0);
+    CHECK(status.transitioning && output[0] == 0 && status.pi[0].output_permille == 0);
     sample(10, 0, 0, false);
     CHECK(!status.transitioning && output[0] == -100 && status.remaining_ms == 10);
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_BOTH, 250, 250, 10) == WHEEL_REQUEST_ACCEPTED);
@@ -224,7 +237,7 @@ static void transitions_and_stop_priority(void)
     expect_stopped(WHEEL_STOP_COMMAND);
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_LEFT, 250, 0, 100) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 0, false);
-    CHECK(output[0] == 222);
+    CHECK(output[0] == 20);
     CHECK(wheel_drive_request_open_loop(-100, 0, 100) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 0, false);
     CHECK(status.transitioning);
@@ -240,15 +253,15 @@ static void renewal_and_wrap(void)
     start_case();
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_LEFT, 250, 0, 10) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 0, false);
-    CHECK(status.pid_output_counts[0] == 445);
+    CHECK(status.pi[0].output_permille == 20);
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_LEFT, 250, 0, 10) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 0, false);
-    CHECK(status.pid_output_counts[0] == 490 && status.remaining_ms == 10);
+    CHECK(status.pi[0].output_permille == 21 && status.remaining_ms == 10);
     sample(10, 0, 0, false);
     expect_stopped(WHEEL_STOP_EXPIRED);
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_LEFT, 250, 0, 10) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 0, false);
-    CHECK(status.pid_output_counts[0] == 445);
+    CHECK(status.pi[0].output_permille == 20);
     start_at(UINT32_MAX - 15U);
     CHECK(wheel_drive_request_open_loop(100, 0, 20) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 0, false);
@@ -265,16 +278,18 @@ static void independent_reversal_and_pending_updates(void)
     sample(10, 0, 0, false);
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_BOTH, -250, 250, 100) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 0, false);
-    CHECK(status.pid_output_counts[0] == -400 && status.pid_output_counts[1] == 490);
-    CHECK(status.reversing[0] && !status.reversing[1] && output[0] == 0 && output[1] == 245);
+    CHECK(status.pi[0].output_permille == -19 && status.pi[1].output_permille == 21);
+    CHECK(status.reversing[0] && !status.reversing[1] && output[0] == 0 && output[1] == 21);
     sample(10, 0, 0, false);
-    CHECK(status.pid_output_counts[0] == -445 && output[0] == -222 && output[1] == 250);
+    CHECK(fabsf(status.pi[0].output_permille + 18.1f) < 0.001f);
+    CHECK(output[0] == -18 && output[1] == 22);
     CHECK(status.remaining_ms == 90);
     CHECK(wheel_drive_request_speed(WHEEL_SELECT_BOTH, 0, 0, 100) == WHEEL_REQUEST_ACCEPTED);
     sample(10, 0, 0, false);
     CHECK(status.mode == WHEEL_MODE_SPEED_LOOP && status.enabled[0] && status.enabled[1]);
-    CHECK(status.pid_output_counts[0] == -45 && status.pid_output_counts[1] == 135);
-    CHECK(output[0] == -22 && output[1] == 67);
+    CHECK(fabsf(status.pi[0].output_permille - 0.9f) < 0.001f);
+    CHECK(status.pi[1].output_permille == 3);
+    CHECK(output[0] == 0 && output[1] == 3);
 
     start_at(0);
     char response[1024];
@@ -354,11 +369,14 @@ static void command_parsing_and_status(void)
     CHECK(strcmp(response, "OK wheel command queued\r\n") == 0);
     sample(10, 0, 0, false);
     CHECK(status.target_milli_counts[0] == 250 && status.target_milli_counts[1] == -250);
-    CHECK(output[0] == 222 && output[1] == -222);
+    CHECK(output[0] == 20 && output[1] == -20);
     CHECK(wheel_commands_execute("wheel status", response, sizeof(response)));
     CHECK(strstr(response, "mode=speed source=debug") != NULL);
-    CHECK(strstr(response, "pid_left=445.000 pid_right=-445.000") != NULL);
-    CHECK(strstr(response, "duty_left=222 duty_right=-222") != NULL);
+    CHECK(strstr(response, "controller=pi output_unit=permille") != NULL);
+    CHECK(strstr(response, "p_left=20.000 p_right=-20.000 i_left=0.000 i_right=0.000") != NULL);
+    CHECK(strstr(response, "i_next_left=1.000 i_next_right=-1.000") != NULL);
+    CHECK(strstr(response, "pi_left=20.000 pi_right=-20.000") != NULL);
+    CHECK(strstr(response, "duty_left=20 duty_right=-20") != NULL);
     CHECK(strlen(response) < 1024 && strstr(response, "raw_right=0\r\n") != NULL);
     CHECK(wheel_commands_execute("wheel stop", response, sizeof(response)));
     CHECK(wheel_commands_execute("wheel left 150 100", response, sizeof(response)));
@@ -384,6 +402,72 @@ static void command_parsing_and_status(void)
     printf("Diagnostic stress response: %u bytes\n", (unsigned)strlen(response));
 }
 
+static void saturation_and_recovery(void)
+{
+    start_case();
+    CHECK(wheel_drive_request_speed(WHEEL_SELECT_BOTH, 10000, -10000, 2000) ==
+          WHEEL_REQUEST_ACCEPTED);
+    sample(10, 0, 0, false);
+    CHECK(status.pi[0].output_permille == 800 && output[0] == 250);
+    CHECK(status.pi[1].output_permille == -800 && output[1] == -250);
+    CHECK(status.pi[0].next_integral_permille == -15);
+    CHECK(status.pi[1].next_integral_permille == 15);
+    for (unsigned i = 0; i < 150; i++)
+    {
+        sample(10, 0, 0, false);
+        CHECK(status.limited[0] && status.limited[1]);
+        CHECK(status.requested_duty_permille[0] == 250 && output[0] == 250);
+        CHECK(status.requested_duty_permille[1] == -250 && output[1] == -250);
+        CHECK(status.pi[0].next_integral_permille >= -150.01f);
+        CHECK(status.pi[1].next_integral_permille <= 150.01f);
+    }
+    CHECK(fabsf(status.pi[0].next_integral_permille + 150) < 0.01f);
+    CHECK(fabsf(status.pi[1].next_integral_permille - 150) < 0.01f);
+    CHECK(wheel_drive_request_speed(WHEEL_SELECT_BOTH, 3000, -3000, 100) == WHEEL_REQUEST_ACCEPTED);
+    sample(10, 0, 0, false);
+    CHECK(!status.limited[0] && !status.limited[1]);
+    CHECK(output[0] >= 89 && output[0] <= 90 && output[1] == -output[0]);
+    wheel_drive_stop();
+    sample(10, 0, 0, false);
+    expect_stopped(WHEEL_STOP_COMMAND);
+}
+
+static void defaults_and_parameter_isolation(void)
+{
+    cases++;
+    tick = 0;
+    CHECK(wheel_drive_init(wheel_pid_defaults));
+    sample(0, 0, 0, false);
+    expect_stopped(WHEEL_STOP_BOOT);
+    CHECK(wheel_drive_request_speed(WHEEL_SELECT_BOTH, 10000, -10000, 100) ==
+          WHEEL_REQUEST_ACCEPTED);
+    for (unsigned i = 0; i < 5; i++)
+    {
+        sample(10, 2, -3, false);
+        CHECK(status.mode == WHEEL_MODE_SPEED_LOOP && output[0] == 0 && output[1] == 0);
+        CHECK(status.pi[0].next_integral_permille == 0 && status.pi[1].next_integral_permille == 0);
+    }
+    wheel_drive_stop();
+    sample(10, 0, 0, false);
+    expect_stopped(WHEEL_STOP_COMMAND);
+
+    /* 参数在初始化时复制；左轮配置不会改动右轮，也不借用调用方的可变内存。 */
+    pid_pi_params_t params[WHEEL_COUNT] = {wheel_pid_defaults[0], wheel_pid_defaults[1]};
+    params[0].kp = 40;
+    tick = 0;
+    CHECK(wheel_drive_init(params));
+    params[0].kp = 999;
+    sample(0, 0, 0, false);
+    CHECK(wheel_drive_request_speed(WHEEL_SELECT_BOTH, 1000, 1000, 100) == WHEEL_REQUEST_ACCEPTED);
+    sample(10, 0, 0, false);
+    CHECK(output[0] == 40 && output[1] == 0);
+    sample(10, 2, 2, false);
+    CHECK(status.reversing[0] && output[0] == 0 && output[1] == 0);
+    CHECK(status.pi[0].next_integral_permille == 0);
+    sample(10, 2, 2, false);
+    CHECK(output[0] == -40 && output[1] == 0);
+}
+
 int main(void)
 {
     boot_and_validation();
@@ -395,6 +479,8 @@ int main(void)
     independent_reversal_and_pending_updates();
     period_faults();
     command_parsing_and_status();
+    saturation_and_recovery();
+    defaults_and_parameter_isolation();
     printf("PASS: %u scenarios, %u checks\n", cases, checks);
     return 0;
 }

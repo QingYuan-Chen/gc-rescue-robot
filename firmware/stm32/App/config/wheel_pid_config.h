@@ -1,18 +1,17 @@
 #ifndef ROBOT_WHEEL_PID_CONFIG_H
 #define ROBOT_WHEEL_PID_CONFIG_H
 
-/* 来源：ae7b14b 的 gc_rescue/Motor/motor.c，四组原速度 PID 参数相同。
- * 输入为每 10 ms 的编码器计数，输出保留原 TIM1 CCR 计数尺度。
- */
-#define WHEEL_PID_REFERENCE_PERIOD_MS 10U
-#define WHEEL_PID_KP 1600.0f
-#define WHEEL_PID_KI 180.0f
-#define WHEEL_PID_KD 0.0f
+#include "bsp/wheel_types.h"
+#include "control/pid.h"
 
-/* 原 TIM1 ARR=1999，完整 PWM 周期为 2000；限幅为截断 (1999 * 0.8f)=1599。
- * 此处保存原算法的单位基准，不读取现用于舵机的 TIM1，也不修改当前 TIM12。
+/* 新 PI 尚未上板整定，Kp/Ki 均为零，显式速度命令也不会产生驱动输出。
+ * 后续由用户在左轮 C 亲自调参；右轮独立保留，不自动复制左轮参数。
+ * 回算时间常数暂取 0.1 s（增益 10/s），只作为实现初值，不代表硬件验证结果。
+ * 原 Kp=1600、Ki=180 的 CCR 参数仅保留在迁移文档和 Git 历史中。
  */
-#define WHEEL_PID_REFERENCE_PWM_PERIOD_COUNTS 2000
-#define WHEEL_PID_OUTPUT_LIMIT_COUNTS 1599
+static const pid_pi_params_t wheel_pid_defaults[WHEEL_COUNT] = {
+    [WHEEL_LEFT] = {.kp = 0.0f, .ki = 0.0f, .tracking_gain_per_s = 10.0f},
+    [WHEEL_RIGHT] = {.kp = 0.0f, .ki = 0.0f, .tracking_gain_per_s = 10.0f},
+};
 
 #endif

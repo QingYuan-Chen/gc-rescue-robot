@@ -16,3 +16,10 @@ set_target_properties(wheel_control_tests PROPERTIES C_STANDARD 11 C_STANDARD_RE
 target_compile_options(wheel_control_tests PRIVATE -Wall -Wextra -Werror)
 enable_testing()
 add_test(NAME wheel_control_contract COMMAND wheel_control_tests)
+
+# 单独核对算法的时间尺度和抗饱和行为，不用硬件模型冒充电机验收。
+add_executable(pi_tests test_pi.c ${app_dir}/control/pid.c)
+target_include_directories(pi_tests PRIVATE ${app_dir})
+set_target_properties(pi_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES)
+target_compile_options(pi_tests PRIVATE -Wall -Wextra -Werror)
+add_test(NAME pi_contract COMMAND pi_tests)
