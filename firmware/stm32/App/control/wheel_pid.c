@@ -15,6 +15,17 @@ void wheel_pid_reset(wheel_pid_t *controller)
     pid_pi_reset(&controller->state);
 }
 
+void wheel_pid_set_gains(wheel_pid_t *controller, float kp, float ki)
+{
+    controller->params.kp = kp;
+    controller->params.ki = ki;
+    if (ki == 0.0f)
+    {
+        controller->state.integral = 0.0f;
+        controller->state.next_integral = 0.0f;
+    }
+}
+
 float wheel_pid_prepare(wheel_pid_t *controller, float target_delta_counts,
                         int32_t measured_delta_counts)
 {
@@ -31,6 +42,7 @@ void wheel_pid_track(wheel_pid_t *controller, int32_t applied_duty_permille, boo
 void wheel_pid_get_status(const wheel_pid_t *controller, wheel_pid_status_t *status)
 {
     *status = (wheel_pid_status_t){
+        .params = controller->params,
         .error_counts = controller->state.error,
         .proportional_permille = controller->state.proportional,
         .integral_permille = controller->state.integral,

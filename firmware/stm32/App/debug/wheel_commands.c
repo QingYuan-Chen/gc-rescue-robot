@@ -65,8 +65,8 @@ static bool parse_number(const char **text, bool fractional, int32_t *value)
 
 static void format_result(wheel_request_result_t result, char *response, size_t capacity)
 {
-    static const char *const reasons[] = {"accepted", "range", "not_ready", "stop_pending",
-                                          "period_fault_reset_required"};
+    static const char *const reasons[] = {
+        "accepted", "range", "not_ready", "stop_pending", "period_fault_reset_required", "busy"};
     if (result == WHEEL_REQUEST_ACCEPTED)
     {
         snprintf(response, capacity, "OK wheel command queued\r\n");
@@ -75,6 +75,26 @@ static void format_result(wheel_request_result_t result, char *response, size_t 
     {
         snprintf(response, capacity, "ERR wheel %s\r\n", reasons[result]);
     }
+}
+
+static bool parse_selection(const char **text, wheel_drive_selection_t *selection)
+{
+    static const char *const names[] = {"both", "left", "right"};
+    for (unsigned i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+    {
+        const size_t length = strlen(names[i]);
+        if (strncmp(*text, names[i], length) == 0)
+        {
+            const char delimiter = (*text)[length];
+            if (delimiter == '\0' || delimiter == ' ' || delimiter == ':')
+            {
+                *selection = (wheel_drive_selection_t)i;
+                *text += length;
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 bool wheel_commands_execute(const char *line, char *response, size_t capacity)
@@ -95,41 +115,52 @@ bool wheel_commands_execute(const char *line, char *response, size_t capacity)
         return true;
     }
 
-    const bool speed = strncmp(line, "wheel speed ", 12U) == 0;
-    const char *arguments = line + (speed ? 12U : 5U);
-    if (!speed && *arguments == ' ')
+    const bool target = strncmp(line, "wheel target ", 13U) == 0;
+    const bool start = strncmp(line, "wheel start ", 12U) == 0;
+    const char *cursor = line + (target ? 13U : (start ? 12U : 5U));
+    if (!target && !start && *cursor == ' ')
     {
-        arguments++;
+        cursor++;
     }
-    const bool both = strncmp(arguments, "both ", 5U) == 0;
-    const bool left = strncmp(arguments, "left ", 5U) == 0;
-    const bool right = strncmp(arguments, "right ", 6U) == 0;
-    if (both || left || right)
+    wheel_drive_selection_t selection;
+    if (parse_selection(&cursor, &selection))
     {
-        const char *cursor = arguments + (right ? 6U : 5U);
-        int32_t first, second = 0, duration;
-        if (parse_number(&cursor, speed, &first) &&
-            (!both || parse_number(&cursor, speed, &second)) &&
-            parse_number(&cursor, false, &duration) && *cursor == '\0' && duration > 0)
+        if (start && *cursor == '\0')
         {
-            const int32_t left_value = right ? 0 : first;
-            const int32_t right_value = right ? first : second;
-            const wheel_drive_selection_t selection =
-                both ? WHEEL_SELECT_BOTH : (left ? WHEEL_SELECT_LEFT : WHEEL_SELECT_RIGHT);
-            const wheel_request_result_t result =
-                speed ? wheel_drive_request_speed(selection, left_value, right_value,
-                                                  (uint32_t)duration)
-                      : wheel_drive_request_open_loop(left_value, right_value, (uint32_t)duration);
-            format_result(result, response, capacity);
+            format_result(wheel_drive_start_speed(selection), response, capacity);
             return true;
+        }
+        /* 数值控件可用冒号传目标；开环仍保留原来的占空比和时长两个输入。 */
+        if (!start && (*cursor == ' ' || (target && *cursor == ':')))
+        {
+            cursor++;
+            int32_t first, second = 0, duration = 0;
+            const bool both = selection == WHEEL_SELECT_BOTH;
+            const bool right = selection == WHEEL_SELECT_RIGHT;
+            if (parse_number(&cursor, target, &first) &&
+                (!both || parse_number(&cursor, target, &second)) &&
+                (target || (parse_number(&cursor, false, &duration) && duration > 0)) &&
+                *cursor == '\0')
+            {
+                const int32_t left_value = right ? 0 : first;
+                const int32_t right_value = right ? first : second;
+                const wheel_request_result_t result =
+                    target ? wheel_drive_set_speed_target(selection, left_value, right_value)
+                           : wheel_drive_request_open_loop(left_value, right_value,
+                                                           (uint32_t)duration);
+                format_result(result, response, capacity);
+                return true;
+            }
         }
     }
     snprintf(response, capacity,
-             "ERR wheel: status | stop | [speed] left/right <value> <ms> | "
-             "[speed] both <left> <right> <ms>; duty=-%d..%d; speed=counts/10ms, "
-             "max_milli_counts=%d, max_decimals=3; ms=%u..%u step=%u\r\n",
+             "ERR wheel status | stop | target left/right <counts> | "
+             "target both <left> <right> | start left/right/both | "
+             "left/right <duty> <ms> | both <left_duty> <right_duty> <ms>; "
+             "duty=-%d..%d; target=counts/10ms, max_milli_counts=%d, max_decimals=3; "
+             "open_ms=%u..%u step=%u; parameter separator space or colon\r\n",
              WHEEL_MANUAL_MAX_DUTY_PERMILLE, WHEEL_MANUAL_MAX_DUTY_PERMILLE,
-             WHEEL_SPEED_MAX_TARGET_MILLI_COUNTS, WHEEL_PERIOD_MS, WHEEL_MANUAL_MAX_DURATION_MS,
+             WHEEL_SPEED_MAX_TARGET_MILLI_COUNTS, WHEEL_PERIOD_MS, WHEEL_OPEN_LOOP_MAX_DURATION_MS,
              WHEEL_PERIOD_MS);
     return true;
 }

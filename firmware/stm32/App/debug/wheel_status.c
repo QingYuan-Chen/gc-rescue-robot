@@ -9,8 +9,8 @@ void wheel_status_format(char *response, size_t capacity)
 {
     static const char *const modes[] = {"stop", "open", "speed"};
     static const char *const stops[] = {"boot", "command", "expired", "period"};
-    static const char *const rejections[] = {"none", "invalid", "not_ready", "stop_pending",
-                                             "period_fault"};
+    static const char *const rejections[] = {"none",         "invalid",      "not_ready",
+                                             "stop_pending", "period_fault", "busy"};
     wheel_drive_status_t status;
     wheel_drive_get_status(&status);
     const int length = snprintf(
@@ -19,6 +19,7 @@ void wheel_status_format(char *response, size_t capacity)
         "mode=%s source=%s controller=pi output_unit=permille ready=%u fault=%u "
         "transition=%u stop=%s reject=%s "
         "enable_left=%u enable_right=%u target_left_milli=%ld target_right_milli=%ld "
+        "setpoint_left_milli=%ld setpoint_right_milli=%ld "
         "p_left=%.3f p_right=%.3f i_left=%.3f i_right=%.3f "
         "i_next_left=%.3f i_next_right=%.3f pi_left=%.3f pi_right=%.3f "
         "request_left=%ld request_right=%ld "
@@ -32,6 +33,8 @@ void wheel_status_format(char *response, size_t capacity)
         stops[status.last_stop_reason], rejections[status.last_reject_reason],
         (unsigned)status.enabled[WHEEL_LEFT], (unsigned)status.enabled[WHEEL_RIGHT],
         (long)status.target_milli_counts[WHEEL_LEFT], (long)status.target_milli_counts[WHEEL_RIGHT],
+        (long)status.configured_target_milli_counts[WHEEL_LEFT],
+        (long)status.configured_target_milli_counts[WHEEL_RIGHT],
         (double)status.pi[WHEEL_LEFT].proportional_permille,
         (double)status.pi[WHEEL_RIGHT].proportional_permille,
         (double)status.pi[WHEEL_LEFT].integral_permille,

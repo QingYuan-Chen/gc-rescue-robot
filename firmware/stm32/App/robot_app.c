@@ -4,6 +4,7 @@
 #include "config/wheel_config.h"
 #include "config/wheel_pid_config.h"
 #include "control/wheel_drive.h"
+#include "debug/vofa_stream.h"
 #include "runtime/runtime_monitor.h"
 
 #include "cmsis_os2.h"
@@ -34,6 +35,7 @@ void robot_app_run(void)
             next_tick = tick;
         }
         wheel_drive_step(tick, delayed);
+        vofa_stream_capture();
         runtime_monitor_sample(tick, delayed);
     }
 }

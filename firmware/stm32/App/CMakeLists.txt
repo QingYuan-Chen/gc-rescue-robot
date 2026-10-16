@@ -8,6 +8,8 @@ set(app_sources
     control/wheel_drive.c
     control/wheel_pid.c
     debug/debug_console.c
+    debug/pid_commands.c
+    debug/vofa_stream.c
     debug/wheel_commands.c
     debug/wheel_status.c
     runtime/runtime_monitor.c
