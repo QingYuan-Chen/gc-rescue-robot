@@ -22,6 +22,7 @@
 #include "gpio.h"
 
 /* USER CODE BEGIN 0 */
+#include "bsp/board_outputs.h"
 
 /* USER CODE END 0 */
 
@@ -32,55 +33,28 @@
 
 /* USER CODE END 1 */
 
-/** Configure pins
-     PH0-OSC_IN (PH0)   ------> RCC_OSC_IN
-     PH1-OSC_OUT (PH1)   ------> RCC_OSC_OUT
-*/
+/* 配置当前安全基础版的 GPIO，编码器仅作为普通输入。 */
 void MX_GPIO_Init(void)
 {
-
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-  /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOE_CLK_ENABLE();
-  __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOE_CLK_ENABLE();
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOE, BIN2_Pin|BIN1_Pin|AIN1_Pin|GPIO_PIN_1, GPIO_PIN_RESET);
+  /* 编码器暂作普通输入，不配置或启动编码器定时器。 */
+  GPIO_InitTypeDef gpio = {0};
+  gpio.Mode = GPIO_MODE_INPUT;
+  gpio.Pull = GPIO_NOPULL;
+  gpio.Pin = M3_ENC_A_Pin | M3_ENC_B_Pin;
+  HAL_GPIO_Init(GPIOD, &gpio);
+  gpio.Pin = M4_ENC_A_Pin | M4_ENC_B_Pin;
+  HAL_GPIO_Init(GPIOC, &gpio);
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(AIN2_GPIO_Port, AIN2_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, DIN2_Pin|DIN1_Pin|CIN1_Pin|CIN2_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pins : BIN2_Pin BIN1_Pin AIN1_Pin PE1 */
-  GPIO_InitStruct.Pin = BIN2_Pin|BIN1_Pin|AIN1_Pin|GPIO_PIN_1;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : AIN2_Pin */
-  GPIO_InitStruct.Pin = AIN2_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(AIN2_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : DIN2_Pin DIN1_Pin CIN1_Pin CIN2_Pin */
-  GPIO_InitStruct.Pin = DIN2_Pin|DIN1_Pin|CIN1_Pin|CIN2_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-
+  /* USER CODE BEGIN MX_GPIO_Init_2 */
+  board_outputs_disable();
+  /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 2 */
-
 /* USER CODE END 2 */

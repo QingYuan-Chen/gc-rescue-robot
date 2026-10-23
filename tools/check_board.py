@@ -1,4 +1,4 @@
-"""复测无线链路、控制周期和停车状态；不发送运动命令。"""
+"""查询 TB67H450 安全基础版的链路、运行周期和 GPIO 状态。"""
 
 import argparse
 from datetime import datetime, timezone
@@ -11,7 +11,7 @@ from serial.tools import list_ports
 
 def query(port, command, prefix):
     port.write(command.encode("ascii") + b"\r\n")
-    # status 会依次返回基础状态和车轮状态，按前缀读取目标行。
+    # status 依次返回基础运行状态和安全 GPIO 快照。
     for _ in range(10):
         line = port.readline().decode("ascii").strip()
         if line.startswith(prefix):
@@ -54,26 +54,19 @@ def main():
             port.reset_input_buffer()
             result["ping"] = query(port, "ping", "OK pong")
             result["runtime"] = fields(query(port, "status", "OK status "))
-            # 先读取 status 附带的车轮快照，避免遗留响应与下一条查询混淆。
-            wheel_line = port.readline().decode("ascii").strip()
-            if not wheel_line.startswith("OK wheel "):
-                raise RuntimeError(f"没有收到车轮状态：{wheel_line!r}")
-            result["wheels"] = fields(wheel_line)
-            runtime, wheels = result["runtime"], result["wheels"]
-            if wheels.get("controller") != "pi" or wheels.get("output_unit") != "permille":
-                raise RuntimeError("固件不是当前 PI 状态协议，请使用对应版本的检查工具")
+            safety_line = port.readline().decode("ascii").strip()
+            if not safety_line.startswith("OK safety "):
+                raise RuntimeError(f"没有收到安全基础版状态：{safety_line!r}")
+            result["safety"] = fields(safety_line)
+            runtime, safety = result["runtime"], result["safety"]
             if runtime["period_ticks"] != 10 or runtime["min"] != 10 or runtime["max"] != 10:
                 raise RuntimeError("10 ms 周期检查未通过")
             if any(runtime[key] for key in ("delay_errors", "rx_errors", "tx_errors", "rx_overflow")):
                 raise RuntimeError("存在历史调度或串口错误，请查看输出记录")
-            if wheels["mode"] != "stop" or wheels["ready"] != 1 or wheels["fault"] != 0:
-                raise RuntimeError("车轮未处于正常停车状态，请查看模式与故障原因")
-            if any(wheels[key] != 0 for key in (
-                "duty_left", "duty_right", "request_left", "request_right", "remaining_ms",
-                "enable_left", "enable_right", "pi_left", "pi_right", "transition",
-                "p_left", "p_right", "i_left", "i_right", "i_next_left", "i_next_right",
-            )):
-                raise RuntimeError("停车输出或控制状态未清理完成")
+            if (safety["profile"], safety["left"], safety["right"]) != ("tb67h450-safe", "M4", "M3"):
+                raise RuntimeError("板上固件或端口定义不是当前安全基础版")
+            if safety["outputs_low"] != 1 or safety["motor_control"] != 0 or safety["encoders"] != 0:
+                raise RuntimeError("GPIO 未保持低电平或仍启用了控制模块")
             result["passed"] = True
     except Exception as error:
         result["error"] = str(error)
@@ -81,7 +74,7 @@ def main():
     finally:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"通过：{args.port}，链路正常、周期 10 ms、已执行停车且无故障。记录：{args.output}")
+    print(f"通过：{args.port}，周期 10 ms、输出锁存为低且为 GPIO 输出模式；未执行运动。记录：{args.output}")
 
 
 if __name__ == "__main__":

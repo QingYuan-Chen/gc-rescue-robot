@@ -1,41 +1,25 @@
 #include "robot_app.h"
 
-#include "bsp/board_startup.h"
-#include "config/wheel_config.h"
-#include "config/wheel_pid_config.h"
-#include "control/wheel_drive.h"
-#include "debug/vofa_stream.h"
 #include "runtime/runtime_monitor.h"
 
 #include "cmsis_os2.h"
-#include "main.h"
 
-void robot_app_init(void)
-{
-    board_startup_hold_outputs();
-}
+#define ROBOT_HEARTBEAT_PERIOD_MS 10U
 
 void robot_app_run(void)
 {
-    if (!wheel_drive_init(wheel_pid_defaults))
-    {
-        Error_Handler();
-    }
     uint32_t next_tick = osKernelGetTickCount();
-    wheel_drive_step(next_tick, false);
-    runtime_monitor_init(WHEEL_PERIOD_MS);
+    runtime_monitor_init(ROBOT_HEARTBEAT_PERIOD_MS);
     for (;;)
     {
-        next_tick += WHEEL_PERIOD_MS;
+        next_tick += ROBOT_HEARTBEAT_PERIOD_MS;
         const bool delayed = osDelayUntil(next_tick) != osOK;
         const uint32_t tick = osKernelGetTickCount();
         if (delayed)
         {
-            /* 控制层负责锁定停车；调度重新对齐后仍继续采样和报告。 */
             next_tick = tick;
         }
-        wheel_drive_step(tick, delayed);
-        vofa_stream_capture();
+        /* 当前仅观察基础运行，不启动执行器或编码器。 */
         runtime_monitor_sample(tick, delayed);
     }
 }

@@ -1,10 +1,7 @@
 #include "debug_console.h"
-#include "pid_commands.h"
-#include "vofa_stream.h"
-#include "wheel_commands.h"
-#include "wheel_status.h"
 
 #include "bsp/debug_uart.h"
+#include "bsp/board_outputs.h"
 #include "runtime/runtime_monitor.h"
 
 #include "cmsis_os2.h"
@@ -17,14 +14,6 @@
 #define DEBUG_CONSOLE_LINE_CAPACITY 96U
 #define DEBUG_CONSOLE_REPORT_MIN_MS 100U
 #define DEBUG_CONSOLE_REPORT_MAX_MS 60000U
-#define DEBUG_CONSOLE_RX_BUDGET 256U
-
-typedef struct
-{
-    char text[DEBUG_CONSOLE_LINE_CAPACITY];
-    size_t length;
-    bool discard;
-} console_line_t;
 
 /* 当前仅调试任务访问；参数只保存在 RAM，复位后关闭自动上报。 */
 static uint32_t report_ms;
@@ -64,7 +53,10 @@ static void report_status(void)
     {
         debug_uart_write(response, (uint16_t)length);
     }
-    wheel_status_format(response, sizeof(response));
+    snprintf(response, sizeof(response),
+             "OK safety profile=tb67h450-safe left=M4 right=M3 outputs_low=%u "
+             "motor_control=0 encoders=0\r\n",
+             board_outputs_are_disabled() ? 1U : 0U);
     write_text(response);
 }
 
@@ -72,19 +64,6 @@ static void report_parameter(void)
 {
     char response[48];
     snprintf(response, sizeof(response), "OK report_ms=%lu\r\n", (unsigned long)report_ms);
-    write_text(response);
-}
-
-static void report_vofa(void)
-{
-    vofa_stream_status_t status;
-    vofa_stream_get_status(&status);
-    snprintf(response, sizeof(response),
-             "OK vofa enabled=%u channels=8 period_ms=10 queued=%lu captured=%lu "
-             "dropped=%lu sent=%lu tx_errors=%lu\r\n",
-             (unsigned)status.enabled, (unsigned long)status.queued, (unsigned long)status.captured,
-             (unsigned long)status.dropped, (unsigned long)status.sent,
-             (unsigned long)status.tx_errors);
     write_text(response);
 }
 
@@ -131,23 +110,10 @@ static void execute_line(char *line)
     {
         return;
     }
-    if (pid_commands_execute(line, response, sizeof(response)) ||
-        wheel_commands_execute(line, response, sizeof(response)))
-    {
-        write_text(response);
-        return;
-    }
     if (strcmp(line, "help") == 0)
     {
-        /* FireWater 的冒号分支会把非数字也作为采样；普通回执统一不用冒号。 */
-        write_text("OK help ping | status | get report_ms | set report_ms <0|100..60000> | "
-                   "vofa on/off/status | pid edit left <kp|ki|kd> <value> | "
-                   "pid apply left | pid get left | "
-                   "wheel status/stop | wheel left/right <duty> <ms> | "
-                   "wheel both <left> <right> <ms> | "
-                   "wheel target left/right <counts> | "
-                   "wheel target both <left_counts> <right_counts> | "
-                   "wheel start left/right/both; parameter separator space or colon\r\n");
+        write_text("OK help: ping | status | get report_ms | "
+                   "set report_ms <0|100..60000>\r\n");
     }
     else if (strcmp(line, "ping") == 0)
     {
@@ -161,35 +127,12 @@ static void execute_line(char *line)
     {
         report_parameter();
     }
-    else if (strcmp(line, "vofa on") == 0)
-    {
-        /* 高频波形与原低频状态轮询互斥，避免周期性长文本占满链路。 */
-        report_ms = 0U;
-        vofa_stream_start(osKernelGetTickCount());
-        report_vofa();
-    }
-    else if (strcmp(line, "vofa off") == 0)
-    {
-        vofa_stream_stop();
-        report_vofa();
-    }
-    else if (strcmp(line, "vofa status") == 0)
-    {
-        report_vofa();
-    }
     else if (strncmp(line, "set report_ms ", 14U) == 0)
     {
         uint32_t value;
         if (!parse_report_ms(line + 14U, &value))
         {
             write_text("ERR report_ms must be 0 or 100..60000\r\n");
-            return;
-        }
-        vofa_stream_status_t stream;
-        vofa_stream_get_status(&stream);
-        if (stream.enabled && value != 0U)
-        {
-            write_text("ERR report_ms requires vofa off\r\n");
             return;
         }
         report_ms = value;
@@ -202,90 +145,67 @@ static void execute_line(char *line)
     }
 }
 
-static void receive_byte(console_line_t *line, uint8_t byte, bool data_lost)
-{
-    if (data_lost)
-    {
-        line->discard = true;
-    }
-    if (byte == '\r' || byte == '\n')
-    {
-        if (line->discard)
-        {
-            write_text("ERR line discarded; resend command\r\n");
-        }
-        else
-        {
-            line->text[line->length] = '\0';
-            execute_line(line->text);
-        }
-        line->length = 0U;
-        line->discard = false;
-    }
-    else if (!line->discard)
-    {
-        if (byte == '\b' || byte == 0x7FU)
-        {
-            if (line->length > 0U)
-            {
-                line->length--;
-            }
-        }
-        else if (byte == '\t' || (byte >= 0x20U && byte <= 0x7EU))
-        {
-            if (line->length + 1U < sizeof(line->text))
-            {
-                line->text[line->length++] = (char)byte;
-            }
-            else
-            {
-                line->discard = true;
-            }
-        }
-        else
-        {
-            line->discard = true;
-        }
-    }
-}
-
 void debug_console_run(void)
 {
-    console_line_t line = {0};
-    pid_commands_init();
+    char line[DEBUG_CONSOLE_LINE_CAPACITY];
+    size_t length = 0U;
+    bool discard_line = false;
+
     if (!debug_uart_start())
     {
         Error_Handler();
     }
-    write_text("READY gc-rescue-robot debug uart5 115200 8N1; use help\r\n");
+    write_text("READY gc-rescue-robot tb67h450-safe uart5 115200 8N1; use help\r\n");
 
     for (;;)
     {
-        vofa_stream_status_t stream;
-        vofa_stream_get_status(&stream);
         uint8_t byte;
         bool data_lost;
-        /* 有积压时立即排空；采集中最多等 1 ms，不叠加一次 10 ms 接收等待。
-         * 先批量处理接收，再发一帧波形；持续输入也不能无限饿死采样发送。
-         */
-        uint32_t timeout = stream.queued != 0U ? 0U : (stream.enabled ? 1U : 10U);
-        for (uint32_t count = 0U; count < DEBUG_CONSOLE_RX_BUDGET; count++)
+        if (debug_uart_read(&byte, &data_lost, 10U))
         {
-            if (!debug_uart_read(&byte, &data_lost, timeout))
+            if (data_lost)
             {
-                break;
+                discard_line = true;
             }
-            receive_byte(&line, byte, data_lost);
-            timeout = 0U;
-        }
-        if (pid_commands_poll(response, sizeof(response)))
-        {
-            write_text(response);
-        }
-        const size_t frame_length = vofa_stream_format_next(response, sizeof(response));
-        if (frame_length != 0U)
-        {
-            vofa_stream_record_tx(debug_uart_write(response, (uint16_t)frame_length));
+            if (byte == '\r' || byte == '\n')
+            {
+                if (discard_line)
+                {
+                    write_text("ERR line discarded; resend command\r\n");
+                }
+                else
+                {
+                    line[length] = '\0';
+                    execute_line(line);
+                }
+                length = 0U;
+                discard_line = false;
+            }
+            else if (!discard_line)
+            {
+                if (byte == '\b' || byte == 0x7FU)
+                {
+                    if (length > 0U)
+                    {
+                        length--;
+                    }
+                }
+                else if (byte == '\t' || (byte >= 0x20U && byte <= 0x7EU))
+                {
+                    if (length + 1U < sizeof(line))
+                    {
+                        line[length++] = (char)byte;
+                    }
+                    else
+                    {
+                        discard_line = true;
+                    }
+                }
+                else
+                {
+                    discard_line = true;
+                }
+            }
         }
 
         const uint32_t tick = osKernelGetTickCount();

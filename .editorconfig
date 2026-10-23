@@ -14,8 +14,8 @@ indent_size = 2
 [*.md]
 trim_trailing_whitespace = false
 
-# 保留生成代码、第三方库和旧参考文件的原格式，包含 GB18030 编码源码。
-[firmware/stm32/{Core,Drivers,Middlewares,gc_rescue}/**]
+# 保留生成代码和第三方库的原格式与编码。
+[firmware/stm32/{Core,Drivers,Middlewares}/**]
 charset = unset
 end_of_line = unset
 indent_style = unset

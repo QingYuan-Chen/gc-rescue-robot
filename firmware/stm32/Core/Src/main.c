@@ -19,14 +19,13 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
-#include "tim.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "usart.h"
 #include "robot_app.h"
-#include "bsp/motor.h"
+#include "bsp/board_outputs.h"
 
 /* USER CODE END Includes */
 
@@ -72,6 +71,8 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+  /* 时钟和 HAL 初始化之前先固定新版驱动输入。 */
+  board_outputs_disable();
 
   /* USER CODE END 1 */
 
@@ -96,12 +97,8 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_TIM4_Init();
-  MX_TIM8_Init();
-  MX_TIM12_Init();
   MX_UART5_Init();
   /* USER CODE BEGIN 2 */
-  robot_app_init();
 
   /* USER CODE END 2 */
 
@@ -248,9 +245,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* 故障时直接关闭车轮输出，不等待任务调度。 */
+  /* 故障时直接将全部驱动输入拉低，不依赖任务调度。 */
   __disable_irq();
-  motor_emergency_stop();
+  board_outputs_disable();
   while (1)
   {
   }

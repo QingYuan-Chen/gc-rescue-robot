@@ -5,7 +5,7 @@
 #include "stm32h7xx_hal.h"
 #include "task.h"
 
-/* 统计由控制任务独占更新；公开快照通过临界区交接，保留 SWD 观察能力。 */
+/* 统计由基础运行任务独占更新；公开快照通过临界区交接，保留 SWD 观察能力。 */
 static runtime_monitor_status_t sample;
 static volatile runtime_monitor_status_t runtime_status;
 static uint32_t previous_tick;
