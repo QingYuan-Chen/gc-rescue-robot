@@ -1,4 +1,4 @@
-"""查询 TB67H450 安全基础版的链路、运行周期和 GPIO 状态。"""
+"""只读查询 TB67H450 基础驱动的链路、周期、编码器和停车状态。"""
 
 import argparse
 from datetime import datetime, timezone
@@ -11,7 +11,7 @@ from serial.tools import list_ports
 
 def query(port, command, prefix):
     port.write(command.encode("ascii") + b"\r\n")
-    # status 依次返回基础运行状态和安全 GPIO 快照。
+    # status 依次返回基础运行、安全 GPIO、车轮输入输出三个快照。
     for _ in range(10):
         line = port.readline().decode("ascii").strip()
         if line.startswith(prefix):
@@ -35,6 +35,24 @@ def fields(line):
     return result
 
 
+def check_idle(runtime, safety, motor):
+    if runtime["period_ticks"] != 10 or runtime["min"] != 10 or runtime["max"] != 10:
+        raise RuntimeError("10 ms 周期检查未通过")
+    if any(runtime[key] for key in ("delay_errors", "rx_errors", "tx_errors", "rx_overflow")):
+        raise RuntimeError("存在历史调度或串口错误，请查看输出记录")
+    if (safety["profile"], safety["left"], safety["right"]) != ("tb67h450-basic", "M2", "M1"):
+        raise RuntimeError("板上固件或端口定义不是当前基础驱动版")
+    if safety["outputs_low"] != 1 or safety["motor_control"] != 1 or safety["encoders"] != 1:
+        raise RuntimeError("输出未处于 GPIO 双低停车状态或固件能力不匹配")
+    if motor["ready"] != 1 or motor["fault"] != 0:
+        raise RuntimeError("车轮模块未就绪或故障已锁定")
+    if (motor["left"], motor["right"]) != ("M2", "M1"):
+        raise RuntimeError("车轮模块端口定义不匹配")
+    if any(motor[key] for key in ("request_left", "request_right", "applied_left",
+                                 "applied_right", "phase_left", "phase_right", "remaining_ms")):
+        raise RuntimeError("存在活动电机命令；本工具只查询，不改变命令或输出")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", required=True, help="当前 DAPLink 串口，例如 COM5")
@@ -56,17 +74,13 @@ def main():
             result["runtime"] = fields(query(port, "status", "OK status "))
             safety_line = port.readline().decode("ascii").strip()
             if not safety_line.startswith("OK safety "):
-                raise RuntimeError(f"没有收到安全基础版状态：{safety_line!r}")
+                raise RuntimeError(f"没有收到输出状态：{safety_line!r}")
             result["safety"] = fields(safety_line)
-            runtime, safety = result["runtime"], result["safety"]
-            if runtime["period_ticks"] != 10 or runtime["min"] != 10 or runtime["max"] != 10:
-                raise RuntimeError("10 ms 周期检查未通过")
-            if any(runtime[key] for key in ("delay_errors", "rx_errors", "tx_errors", "rx_overflow")):
-                raise RuntimeError("存在历史调度或串口错误，请查看输出记录")
-            if (safety["profile"], safety["left"], safety["right"]) != ("tb67h450-safe", "M4", "M3"):
-                raise RuntimeError("板上固件或端口定义不是当前安全基础版")
-            if safety["outputs_low"] != 1 or safety["motor_control"] != 0 or safety["encoders"] != 0:
-                raise RuntimeError("GPIO 未保持低电平或仍启用了控制模块")
+            motor_line = port.readline().decode("ascii").strip()
+            if not motor_line.startswith("OK motor "):
+                raise RuntimeError(f"没有收到车轮状态：{motor_line!r}")
+            result["motor"] = fields(motor_line)
+            check_idle(result["runtime"], result["safety"], result["motor"])
             result["passed"] = True
     except Exception as error:
         result["error"] = str(error)

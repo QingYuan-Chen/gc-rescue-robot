@@ -15,6 +15,7 @@ typedef struct
     uint32_t Mode;
     uint32_t Pull;
     uint32_t Speed;
+    uint32_t Alternate;
 } GPIO_InitTypeDef;
 
 typedef enum { GPIO_PIN_RESET, GPIO_PIN_SET } GPIO_PinState;

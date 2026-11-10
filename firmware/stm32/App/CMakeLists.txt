@@ -2,6 +2,10 @@ set(app_sources
     robot_app.c
     bsp/board_outputs.c
     bsp/debug_uart.c
+    bsp/encoder.c
+    bsp/motor.c
+    debug/motor_commands.c
+    runtime/wheel_io.c
     debug/debug_console.c
     runtime/runtime_monitor.c
 )

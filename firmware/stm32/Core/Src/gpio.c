@@ -33,7 +33,7 @@
 
 /* USER CODE END 1 */
 
-/* 配置当前安全基础版的 GPIO，编码器仅作为普通输入。 */
+/* 保持执行器低电平；编码器复用输入由对应定时器 MSP 配置。 */
 void MX_GPIO_Init(void)
 {
   __HAL_RCC_GPIOA_CLK_ENABLE();
@@ -41,15 +41,6 @@ void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
-
-  /* 编码器暂作普通输入，不配置或启动编码器定时器。 */
-  GPIO_InitTypeDef gpio = {0};
-  gpio.Mode = GPIO_MODE_INPUT;
-  gpio.Pull = GPIO_NOPULL;
-  gpio.Pin = M3_ENC_A_Pin | M3_ENC_B_Pin;
-  HAL_GPIO_Init(GPIOD, &gpio);
-  gpio.Pin = M4_ENC_A_Pin | M4_ENC_B_Pin;
-  HAL_GPIO_Init(GPIOC, &gpio);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
   board_outputs_disable();

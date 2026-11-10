@@ -2,6 +2,7 @@
 #include "bsp/debug_uart.h"
 #include "debug/debug_console.h"
 #include "runtime/runtime_monitor.h"
+#include "runtime/wheel_io.h"
 #include "main.h"
 
 #include <assert.h>
@@ -17,6 +18,7 @@ static jmp_buf console_finished;
 static const char *input;
 static char output[8192];
 static size_t output_length;
+static uint32_t tick = 200U;
 
 void HAL_GPIO_WritePin(GPIO_TypeDef *port, uint16_t pins, GPIO_PinState state)
 {
@@ -43,7 +45,7 @@ void HAL_GPIO_Init(GPIO_TypeDef *port, const GPIO_InitTypeDef *config)
 }
 
 void Error_Handler(void) { abort(); }
-uint32_t osKernelGetTickCount(void) { return 200U; }
+uint32_t osKernelGetTickCount(void) { return tick; }
 void *osThreadGetId(void) { return NULL; }
 uint32_t osThreadGetStackSpace(void *thread) { (void)thread; return 512U; }
 bool debug_uart_start(void) { return true; }
@@ -54,6 +56,7 @@ bool debug_uart_read(uint8_t *byte, bool *lost, uint32_t timeout)
     {
         longjmp(console_finished, 1);
     }
+    tick += 10U;
     *byte = (uint8_t)*input++;
     *lost = false;
     return true;
@@ -72,6 +75,16 @@ void runtime_monitor_get_status(runtime_monitor_status_t *status)
     memset(status, 0, sizeof(*status));
     status->period_ticks = 10U;
 }
+
+/* 控制台测试只发查询和无效命令；真实调度与驱动另由 wheel_io 测试覆盖。 */
+void wheel_io_get_status(wheel_io_status_t *status)
+{
+    memset(status, 0, sizeof(*status));
+    status->ready = true;
+}
+bool wheel_io_request(int16_t left, int16_t right, uint32_t duration)
+{ (void)left; (void)right; (void)duration; abort(); }
+void wheel_io_stop(void) { abort(); }
 
 static void check_pin_mapping(void)
 {
@@ -117,14 +130,16 @@ static void check_outputs(void)
 
 static void check_console(void)
 {
-    input = "help\rping\rstatus\rget report_ms\rset report_ms 0\r"
+    input = "help\rping\rstatus\rencoder\rmotor status\rget report_ms\rset report_ms 0\r"
             "wheel left 100 1000\rwheel speed both 10 10 1000\rwheel stop\r"
             "pid apply left\rvofa on\r";
     const unsigned previous_writes = writes;
     if (setjmp(console_finished) == 0) { debug_console_run(); }
     assert(strstr(output, "OK pong\r\n") != NULL);
-    assert(strstr(output, "profile=tb67h450-safe left=M4 right=M3 outputs_low=1") != NULL);
-    assert(strstr(output, "motor_control=0 encoders=0\r\n") != NULL);
+    assert(strstr(output, "0,0,0,0,0\r\n") != NULL);
+    assert(strstr(output, "profile=tb67h450-basic left=M2 right=M1 outputs_low=1") != NULL);
+    assert(strstr(output, "motor_control=1 encoders=1\r\n") != NULL);
+    assert(strstr(output, "OK motor ready=1 fault=0 left=M2 right=M1") != NULL);
     unsigned rejected = 0U;
     for (const char *p = output; (p = strstr(p, "ERR unknown command; use help\r\n")); p++)
     {

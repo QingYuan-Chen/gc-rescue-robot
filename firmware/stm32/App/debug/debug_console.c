@@ -1,8 +1,10 @@
 #include "debug_console.h"
+#include "motor_commands.h"
 
 #include "bsp/debug_uart.h"
 #include "bsp/board_outputs.h"
 #include "runtime/runtime_monitor.h"
+#include "runtime/wheel_io.h"
 
 #include "cmsis_os2.h"
 #include "main.h"
@@ -53,10 +55,13 @@ static void report_status(void)
     {
         debug_uart_write(response, (uint16_t)length);
     }
+    /* 基础状态、GPIO 状态与车轮快照分行输出；能力标志不等于正在运动。 */
     snprintf(response, sizeof(response),
-             "OK safety profile=tb67h450-safe left=M4 right=M3 outputs_low=%u "
-             "motor_control=0 encoders=0\r\n",
+             "OK safety profile=tb67h450-basic left=M2 right=M1 outputs_low=%u "
+             "motor_control=1 encoders=1\r\n",
              board_outputs_are_disabled() ? 1U : 0U);
+    write_text(response);
+    motor_commands_status(response, sizeof(response));
     write_text(response);
 }
 
@@ -110,10 +115,15 @@ static void execute_line(char *line)
     {
         return;
     }
-    if (strcmp(line, "help") == 0)
+    if (motor_commands_execute(line, response, sizeof(response)))
+    {
+        write_text(response);
+    }
+    else if (strcmp(line, "help") == 0)
     {
         write_text("OK help: ping | status | get report_ms | "
-                   "set report_ms <0|100..60000>\r\n");
+                   "set report_ms <0|100..60000> | encoder | motor status | motor stop | "
+                   "motor left/right <duty> <ms> | motor both <left> <right> <ms>\r\n");
     }
     else if (strcmp(line, "ping") == 0)
     {
@@ -155,11 +165,13 @@ void debug_console_run(void)
     {
         Error_Handler();
     }
-    write_text("READY gc-rescue-robot tb67h450-safe uart5 115200 8N1; use help\r\n");
+    write_text("READY gc-rescue-robot tb67h450-basic uart8 115200 8N1; use help\r\n");
 
+    uint32_t last_vofa_tick = osKernelGetTickCount();
     for (;;)
     {
         uint8_t byte;
+        /* 任一字节丢失、非法或超长时，丢弃整行直到换行，禁止执行残缺命令。 */
         bool data_lost;
         if (debug_uart_read(&byte, &data_lost, 10U))
         {
@@ -209,6 +221,17 @@ void debug_console_run(void)
         }
 
         const uint32_t tick = osKernelGetTickCount();
+        if (tick - last_vofa_tick >= 100U)
+        {
+            last_vofa_tick = tick;
+            wheel_io_status_t wheel;
+            wheel_io_get_status(&wheel);
+            snprintf(response, sizeof(response), "%d,%d,%ld,%ld,%u\r\n",
+                     wheel.motor.applied_left, wheel.motor.applied_right,
+                     (long)wheel.encoder.delta_left, (long)wheel.encoder.delta_right,
+                     wheel.fault ? 1U : 0U);
+            write_text(response);
+        }
         if (report_ms != 0U && tick - last_report_tick >= report_ms)
         {
             last_report_tick = tick;
