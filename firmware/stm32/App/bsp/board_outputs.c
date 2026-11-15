@@ -1,6 +1,7 @@
 #include "board_outputs.h"
 
 #include "main.h"
+#include "motor.h"
 
 /* A/B 指 GPIOA/GPIOB 分组，不是旧工程的电机端口或左右轮标识。 */
 #define MOTOR_A_PINS (M1_IN1_Pin | M1_IN2_Pin | M2_IN1_Pin)
@@ -10,10 +11,7 @@
 static void hold_low(GPIO_TypeDef *port, uint32_t pins)
 {
     GPIO_InitTypeDef gpio = {0};
-    /* 复位初态先清锁存再启用输出，防止直接输出旧的高电平。
-     * 运行中故障关闭仍使用 HAL 逐脚切模式，不能据此保证两根 IN 同时切低；
-     * 该切换瞬态与正常停车共用同一问题，见 2026-10-24 审核记录 A01。
-     */
+    /* 复位初态先清锁存再启用输出；运行中先由 motor_force_outputs_low 接管电机。 */
     HAL_GPIO_WritePin(port, pins, GPIO_PIN_RESET);
     gpio.Pin = pins;
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
@@ -27,6 +25,8 @@ void board_outputs_disable(void)
     __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_GPIOB_CLK_ENABLE();
     __HAL_RCC_GPIOE_CLK_ENABLE();
+
+    motor_force_outputs_low();
 
     /* TB67H450 的 IN1/IN2 同为低电平时输出高阻，持续保持即进入待机。 */
     hold_low(GPIOA, MOTOR_A_PINS);

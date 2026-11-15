@@ -35,7 +35,7 @@
 
 ## 主机测试
 
-保留一套必要的 [控制规则回归](../../tests/wheel_control/README.md)，直接编译正式 C 源码；替身只在 `tests/wheel_control/`，与固件构建隔离。没有新增一次性串口运动脚本。
+保留一套必要的 [控制规则回归](https://github.com/QingYuan-Chen/gc-rescue-robot/blob/57ab4f7a56ded571a27b14d5c54ff8e74ff87634/tests/wheel_control/README.md)，直接编译正式 C 源码；替身只在 `tests/wheel_control/`，与固件构建隔离。没有新增一次性串口运动脚本。
 
 工具：本次复测使用 MinGW GCC 15.2.0、C11、`-Wall -Wextra -Werror`；分别使用 `-Og` 和 `-Ofast`。历史阶段记录中的 GCC 13.1.0 不影响本次结果。
 

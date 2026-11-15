@@ -7,6 +7,7 @@
 
 /* 统计由基础运行任务独占更新；公开快照通过临界区交接，保留 SWD 观察能力。 */
 static runtime_monitor_status_t sample;
+/* volatile 仅便于 SWD 观察；真正的任务间一致性由读写临界区保证。 */
 static volatile runtime_monitor_status_t runtime_status;
 static uint32_t previous_tick;
 static osThreadId_t control_task;

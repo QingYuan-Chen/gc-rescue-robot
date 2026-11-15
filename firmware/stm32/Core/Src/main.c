@@ -27,6 +27,7 @@
 #include "usart.h"
 #include "robot_app.h"
 #include "bsp/board_outputs.h"
+#include "bsp/motor.h"
 
 /* USER CODE END Includes */
 
@@ -241,7 +242,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
-
+  if (htim->Instance == TIM6)
+  {
+    motor_guard_tick_isr(HAL_GetTick());
+  }
   /* USER CODE END Callback 1 */
 }
 

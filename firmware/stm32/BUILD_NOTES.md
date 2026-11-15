@@ -1,4 +1,23 @@
-# 工程恢复与构建记录
+# 工程构建入口与历史记录
+
+## 当前有效入口（2026-10-24）
+
+当前为 TB67H450 基础驱动：左 M4、右 M3；HAL 时基使用 TIM6，TIM17 用于左轮 PWM。有效构建由 `CMakePresets.json`、`cmake/` 和 `App/CMakeLists.txt` 共同定义，没有链接旧 PID、旧车轮控制器或视觉协议。
+
+在 `firmware/stm32/` 执行：
+
+```powershell
+cmake --preset stm32-debug
+cmake --build --preset stm32-debug --parallel 8
+```
+
+Release 使用 `stm32-release`；输出在仓库根 `build/stm32-debug/` 和 `build/stm32-release/`。工具链路径从 PATH 发现。当前接口见[基础电机与编码器接口](../../docs/基础电机与编码器接口.md)，最近的实现验证见[2026-10-23 记录](../../docs/validation/2026-10-23-tb67h450-basic-io.md)，本轮审查见[2026-10-24 记录](../../docs/validation/2026-10-24-project-audit.md)。
+
+协作规则以[工程规范](../../docs/工程规范.md)为准：修改与验证完成后供用户审核，获得对应授权才提交、推送或烧录。
+
+## 历史记录边界
+
+下方内容对应各自日期的旧硬件/旧实现，保留作为追溯证据。其中的 TIM17 时基、已烧录、旧 PID、旧构建目录和自动增量提交等描述均不代表当前状态，也不是当前执行指令。新版未烧录、未完成实物电机或编码器验收。
 
 ## 2026-10-12 阶段 1 最小运行基础
 

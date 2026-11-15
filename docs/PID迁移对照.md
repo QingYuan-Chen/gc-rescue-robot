@@ -1,5 +1,7 @@
 > 历史资料：本文对应旧硬件与旧控制方案。2026-10-22 起不作为当前实现要求；新硬件以 [TB67H450 硬件基线](TB67H450硬件基线.md) 和 [重构方案](智能救援机器人重构方案.md) 为准。
 
+> 本文源码与旧串口协议的链接固定到被审查的历史提交，不指向当前同名文件；下文“当前”指文中日期。
+
 # PID 算法与参数迁移对照
 
 日期：2026-10-14。参考基线：`ae7b14b5de231fc2340a2a49650a907fa5eff1a7`。
@@ -10,9 +12,9 @@
 
 | 新模块 | 职责 | 原实现来源 |
 | --- | --- | --- |
-| [control/pid.c](../firmware/stm32/App/control/pid.c)、[pid.h](../firmware/stm32/App/control/pid.h) | 增量式、位置式 PID 的单步计算与显式清零；无 HAL、FreeRTOS 和共享控制器状态 | `gc_rescue/Motor/pid.c` 的 `incremental_PID()`、`positional_PID()`；`motor.c` 的 `motor_pid_clear()` |
-| [config/wheel_pid_config.h](../firmware/stm32/App/config/wheel_pid_config.h) | 原车轮增益、10 ms 周期、CCR 输出基准与限幅 | `motor.c:44` 的 `pid_init()`；`Core/Src/tim.c` 的 `MX_TIM1_Init()` |
-| [control/wheel_pid.c](../firmware/stm32/App/control/wheel_pid.c)、[wheel_pid.h](../firmware/stm32/App/control/wheel_pid.h) | 用原参数计算车轮 PID，将原 CCR 尺度转换成驱动千分比；不操作硬件 | `motor_task()` 的浮点到整数转换及 `motor_set_pwm()` 的限幅 |
+| [control/pid.c](https://github.com/QingYuan-Chen/gc-rescue-robot/blob/57ab4f7a56ded571a27b14d5c54ff8e74ff87634/firmware/stm32/App/control/pid.c)、[pid.h](https://github.com/QingYuan-Chen/gc-rescue-robot/blob/57ab4f7a56ded571a27b14d5c54ff8e74ff87634/firmware/stm32/App/control/pid.h) | 增量式、位置式 PID 的单步计算与显式清零；无 HAL、FreeRTOS 和共享控制器状态 | `gc_rescue/Motor/pid.c` 的 `incremental_PID()`、`positional_PID()`；`motor.c` 的 `motor_pid_clear()` |
+| [config/wheel_pid_config.h](https://github.com/QingYuan-Chen/gc-rescue-robot/blob/57ab4f7a56ded571a27b14d5c54ff8e74ff87634/firmware/stm32/App/config/wheel_pid_config.h) | 原车轮增益、10 ms 周期、CCR 输出基准与限幅 | `motor.c:44` 的 `pid_init()`；`Core/Src/tim.c` 的 `MX_TIM1_Init()` |
+| [control/wheel_pid.c](https://github.com/QingYuan-Chen/gc-rescue-robot/blob/57ab4f7a56ded571a27b14d5c54ff8e74ff87634/firmware/stm32/App/control/wheel_pid.c)、[wheel_pid.h](https://github.com/QingYuan-Chen/gc-rescue-robot/blob/57ab4f7a56ded571a27b14d5c54ff8e74ff87634/firmware/stm32/App/control/wheel_pid.h) | 用原参数计算车轮 PID，将原 CCR 尺度转换成驱动千分比；不操作硬件 | `motor_task()` 的浮点到整数转换及 `motor_set_pwm()` 的限幅 |
 
 新模块加入 `App/CMakeLists.txt` 的显式清单，使用 `-Wall -Wextra -Werror`。阶段 3 时新增模块无调用方，被链接器移除；阶段 4 已由 `wheel_drive` 为每轮独立调用增量式 PID，仍由同一车轮任务输出，没有第二条电机输出路径。位置式算法尚未接入运行任务。
 

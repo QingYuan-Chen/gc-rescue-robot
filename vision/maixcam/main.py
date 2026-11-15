@@ -1,4 +1,6 @@
 
+# 旧工程视觉参考程序：包含旧 0x55AA 协议、设备路径和模型假设，尚未迁移到 TB67H450 基础版。
+# 当前 STM32 没有对应接收入口；后续接入前须重新定义协议与模型配置，见本目录 README.md。
 from maix import camera, display, image, nn, app, uart, err, pinmap, time, touchscreen
 import struct, os
 

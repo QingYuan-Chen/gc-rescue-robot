@@ -1,7 +1,10 @@
 #include "debug_console.h"
 #include "motor_commands.h"
+#include "position_commands.h"
+#include "speed_commands.h"
 
 #include "bsp/debug_uart.h"
+#include "bsp/imu.h"
 #include "bsp/board_outputs.h"
 #include "runtime/runtime_monitor.h"
 #include "runtime/wheel_io.h"
@@ -72,6 +75,47 @@ static void report_parameter(void)
     write_text(response);
 }
 
+static void report_imu(void)
+{
+    imu_status_t imu;
+    imu_get_status(&imu);
+    const uint32_t now = HAL_GetTick();
+    snprintf(response, sizeof(response),
+             "OK imu receiving=%u accel_frames=%lu gyro_frames=%lu angle_frames=%lu "
+             "checksum_errors=%lu uart_errors=%lu\r\n",
+             imu.receiving, (unsigned long)imu.accel_frames, (unsigned long)imu.gyro_frames,
+             (unsigned long)imu.angle_frames, (unsigned long)imu.checksum_errors,
+             (unsigned long)imu.uart_errors);
+    write_text(response);
+    if (imu.accel_frames != 0U)
+    {
+        snprintf(response, sizeof(response), "OK imu accel_mg=%ld,%ld,%ld age_ms=%lu\r\n",
+                 (long)((int32_t)imu.accel[0] * 16000 / 32768),
+                 (long)((int32_t)imu.accel[1] * 16000 / 32768),
+                 (long)((int32_t)imu.accel[2] * 16000 / 32768),
+                 (unsigned long)(now - imu.accel_ms));
+        write_text(response);
+    }
+    if (imu.gyro_frames != 0U)
+    {
+        snprintf(response, sizeof(response), "OK imu gyro_mdeg_s=%ld,%ld,%ld age_ms=%lu\r\n",
+                 (long)((int64_t)imu.gyro[0] * 2000000 / 32768),
+                 (long)((int64_t)imu.gyro[1] * 2000000 / 32768),
+                 (long)((int64_t)imu.gyro[2] * 2000000 / 32768),
+                 (unsigned long)(now - imu.gyro_ms));
+        write_text(response);
+    }
+    if (imu.angle_frames != 0U)
+    {
+        snprintf(response, sizeof(response), "OK imu angle_mdeg=%ld,%ld,%ld age_ms=%lu\r\n",
+                 (long)((int64_t)imu.angle[0] * 180000 / 32768),
+                 (long)((int64_t)imu.angle[1] * 180000 / 32768),
+                 (long)((int64_t)imu.angle[2] * 180000 / 32768),
+                 (unsigned long)(now - imu.angle_ms));
+        write_text(response);
+    }
+}
+
 static bool parse_report_ms(const char *text, uint32_t *value)
 {
     uint32_t parsed = 0U;
@@ -115,7 +159,15 @@ static void execute_line(char *line)
     {
         return;
     }
-    if (motor_commands_execute(line, response, sizeof(response)))
+    if (position_commands_execute(line, response, sizeof(response)))
+    {
+        write_text(response);
+    }
+    else if (speed_commands_execute(line, response, sizeof(response)))
+    {
+        if (response[0] != '\0') { write_text(response); }
+    }
+    else if (motor_commands_execute(line, response, sizeof(response)))
     {
         write_text(response);
     }
@@ -123,7 +175,8 @@ static void execute_line(char *line)
     {
         write_text("OK help: ping | status | get report_ms | "
                    "set report_ms <0|100..60000> | encoder | motor status | motor stop | "
-                   "motor left/right <duty> <ms> | motor both <left> <right> <ms>\r\n");
+                   "motor left/right <duty> <ms> | motor both <left> <right> <ms> | "
+                   "speed cfg/set/apply/target/stop/get | pos move/target/set/get | vofa on/off/period | imu get\r\n");
     }
     else if (strcmp(line, "ping") == 0)
     {
@@ -132,6 +185,10 @@ static void execute_line(char *line)
     else if (strcmp(line, "status") == 0)
     {
         report_status();
+    }
+    else if (strcmp(line, "imu get") == 0)
+    {
+        report_imu();
     }
     else if (strcmp(line, "get report_ms") == 0)
     {
@@ -161,13 +218,12 @@ void debug_console_run(void)
     size_t length = 0U;
     bool discard_line = false;
 
-    if (!debug_uart_start())
+    if (!debug_uart_start() || !imu_start())
     {
         Error_Handler();
     }
     write_text("READY gc-rescue-robot tb67h450-basic uart8 115200 8N1; use help\r\n");
 
-    uint32_t last_vofa_tick = osKernelGetTickCount();
     for (;;)
     {
         uint8_t byte;
@@ -221,16 +277,17 @@ void debug_console_run(void)
         }
 
         const uint32_t tick = osKernelGetTickCount();
-        if (tick - last_vofa_tick >= 100U)
+        if (speed_commands_poll_result(response, sizeof(response)))
         {
-            last_vofa_tick = tick;
-            wheel_io_status_t wheel;
-            wheel_io_get_status(&wheel);
-            snprintf(response, sizeof(response), "%d,%d,%ld,%ld,%u\r\n",
-                     wheel.motor.applied_left, wheel.motor.applied_right,
-                     (long)wheel.encoder.delta_left, (long)wheel.encoder.delta_right,
-                     wheel.fault ? 1U : 0U);
             write_text(response);
+        }
+        else if (speed_commands_wave_due(tick, response, sizeof(response)))
+        {
+            if (length != 0U || speed_commands_result_pending() ||
+                !debug_uart_try_sample(response, (uint16_t)strlen(response)))
+            {
+                speed_commands_wave_dropped();
+            }
         }
         if (report_ms != 0U && tick - last_report_tick >= report_ms)
         {

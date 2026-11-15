@@ -12,6 +12,58 @@ typedef struct
 
 /* 车轮周期任务独占电机输出，左 M2，右 M1。 */
 static motor_state_t motors[2];
+static volatile bool guard_armed;
+static volatile bool guard_tripped = true;
+static volatile uint32_t guard_completed_ms;
+
+void motor_force_outputs_low(void)
+{
+    /* 先将复用输出同步切低，再接管 GPIO，避免逐脚切换产生反向组合。 */
+    if (__HAL_RCC_TIM1_IS_CLK_ENABLED())
+    {
+        TIM1->CR1 &= ~TIM_CR1_UDIS;
+        TIM1->CCR1 = 0U;
+        TIM1->CCR4 = 0U;
+        TIM1->EGR = TIM_EGR_UG;
+    }
+    if (__HAL_RCC_TIM2_IS_CLK_ENABLED())
+    {
+        TIM2->CR1 &= ~TIM_CR1_UDIS;
+        TIM2->CCR1 = 0U;
+        TIM2->CCR2 = 0U;
+        TIM2->EGR = TIM_EGR_UG;
+    }
+    GPIOA->BSRR = (uint32_t)(M1_IN1_Pin | M1_IN2_Pin | M2_IN1_Pin) << 16U;
+    GPIOB->BSRR = (uint32_t)M2_IN2_Pin << 16U;
+    const uint32_t a_mask = (3UL << (8U * 2U)) | (3UL << (11U * 2U)) | (3UL << (5U * 2U));
+    const uint32_t a_out = (1UL << (8U * 2U)) | (1UL << (11U * 2U)) | (1UL << (5U * 2U));
+    GPIOA->MODER = (GPIOA->MODER & ~a_mask) | a_out;
+    GPIOB->MODER = (GPIOB->MODER & ~(3UL << (3U * 2U))) | (1UL << (3U * 2U));
+}
+
+void motor_guard_tick_isr(uint32_t now_ms)
+{
+    if (guard_armed && now_ms - guard_completed_ms >= 30U)
+    {
+        guard_tripped = true;
+        guard_armed = false;
+        motor_force_outputs_low();
+    }
+}
+
+bool motor_guard_fault(void) { return guard_tripped; }
+
+void motor_guard_begin(uint32_t now_ms)
+{
+    if (!guard_armed) { guard_completed_ms = now_ms; }
+    guard_armed = true;
+}
+
+void motor_guard_complete(uint32_t now_ms)
+{
+    guard_completed_ms = now_ms;
+    guard_armed = motors[0].phase != MOTOR_OFF || motors[1].phase != MOTOR_OFF;
+}
 
 static void pin_config(GPIO_TypeDef *port, uint16_t pins, uint32_t mode, GPIO_PinState level)
 {
@@ -42,8 +94,10 @@ static void stop_side(unsigned side, uint32_t now_ms)
 {
     TIM_HandleTypeDef *timer = side == 0U ? &htim2 : &htim1;
     /* 同一个定时器同时提交两路低电平，再把引脚交还 GPIO。 */
+    timer->Instance->CR1 |= TIM_CR1_UDIS;
     __HAL_TIM_SET_COMPARE(timer, TIM_CHANNEL_1, 0U);
     __HAL_TIM_SET_COMPARE(timer, side == 0U ? TIM_CHANNEL_2 : TIM_CHANNEL_4, 0U);
+    timer->Instance->CR1 &= ~TIM_CR1_UDIS;
     timer->Instance->EGR = TIM_EGR_UG;
     configure_pins(side, GPIO_MODE_OUTPUT_PP, GPIO_PIN_RESET);
     HAL_TIM_PWM_Stop(timer, TIM_CHANNEL_1);
@@ -57,7 +111,12 @@ void motor_stop(uint32_t now_ms)
     stop_side(1U, now_ms);
 }
 
-void motor_init(uint32_t now_ms) { motor_stop(now_ms); }
+void motor_init(uint32_t now_ms)
+{
+    guard_armed = false;
+    guard_tripped = false;
+    motor_stop(now_ms);
+}
 
 static void set_compare(unsigned side, int16_t duty)
 {
@@ -65,8 +124,11 @@ static void set_compare(unsigned side, int16_t duty)
     const uint32_t in1 = duty > 0 ? WHEEL_PWM_PERIOD : WHEEL_PWM_PERIOD - magnitude;
     const uint32_t in2 = duty > 0 ? WHEEL_PWM_PERIOD - magnitude : WHEEL_PWM_PERIOD;
     TIM_HandleTypeDef *timer = side == 0U ? &htim2 : &htim1;
+    /* 关闭更新事件，保证两路预装载同一周期生效。 */
+    timer->Instance->CR1 |= TIM_CR1_UDIS;
     __HAL_TIM_SET_COMPARE(timer, TIM_CHANNEL_1, in1);
     __HAL_TIM_SET_COMPARE(timer, side == 0U ? TIM_CHANNEL_2 : TIM_CHANNEL_4, in2);
+    timer->Instance->CR1 &= ~TIM_CR1_UDIS;
 }
 
 static bool start_side(unsigned side)
@@ -80,10 +142,10 @@ static bool start_side(unsigned side)
     return true;
 }
 
-static bool update_side(unsigned side, int16_t duty, uint32_t now_ms)
+static bool update_side(unsigned side, int16_t duty, bool brake, bool continuous, uint32_t now_ms)
 {
     motor_state_t *state = &motors[side];
-    if (duty == 0)
+    if (duty == 0 && !brake)
     {
         if (state->phase != MOTOR_OFF)
         {
@@ -91,9 +153,9 @@ static bool update_side(unsigned side, int16_t duty, uint32_t now_ms)
         }
         return true;
     }
-    if (state->phase == MOTOR_RUNNING && ((duty > 0) != (state->applied > 0)))
+    if (!continuous && state->phase == MOTOR_RUNNING &&
+        ((duty > 0) != (state->applied > 0)))
     {
-        /* 换向先完整经过待机和唤醒时序；不代表机械上已经停稳。 */
         stop_side(side, now_ms);
         return true;
     }
@@ -123,16 +185,29 @@ static bool update_side(unsigned side, int16_t duty, uint32_t now_ms)
     return true;
 }
 
-bool motor_update(int16_t left, int16_t right, uint32_t now_ms)
+static bool update_both(int16_t left, int16_t right, bool brake_left, bool brake_right,
+                        bool continuous, uint32_t now_ms)
 {
     /* 底层只约束物理占空比；首次联调的更小范围由 wheel_io 入口限制。 */
     if (left < -1000 || left > 1000 || right < -1000 || right > 1000 ||
-        !update_side(0U, (int16_t)-left, now_ms) || !update_side(1U, right, now_ms))
+        guard_tripped || !update_side(0U, (int16_t)-left, brake_left, continuous, now_ms) ||
+        !update_side(1U, right, brake_right, continuous, now_ms))
     {
         motor_stop(now_ms);
         return false;
     }
     return true;
+}
+
+bool motor_update(int16_t left, int16_t right, uint32_t now_ms)
+{
+    return update_both(left, right, false, false, false, now_ms);
+}
+
+bool motor_update_with_brake(int16_t left, int16_t right, bool brake_left, bool brake_right,
+                             uint32_t now_ms)
+{
+    return update_both(left, right, brake_left, brake_right, true, now_ms);
 }
 
 void motor_get_status(motor_status_t *status)

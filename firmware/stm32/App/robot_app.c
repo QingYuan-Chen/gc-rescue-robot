@@ -1,17 +1,22 @@
 #include "robot_app.h"
 
 #include "runtime/runtime_monitor.h"
+#include "bsp/gimbal_test.h"
+#include "bsp/motor.h"
 #include "runtime/wheel_io.h"
 #include "config/wheel_config.h"
 #include "main.h"
 
 #include "cmsis_os2.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 void robot_app_run(void)
 {
     /* FreeRTOS 启动入口已校验 1 kHz tick，此处 ms 与 tick 一一对应。 */
     uint32_t next_tick = osKernelGetTickCount();
     runtime_monitor_init(WHEEL_SAMPLE_PERIOD_MS);
+    gimbal_test_init();
     if (!wheel_io_init(next_tick))
     {
         Error_Handler();
@@ -28,6 +33,10 @@ void robot_app_run(void)
         }
         /* 所有正常电机输出均由该任务执行；无有效命令时保持双低。 */
         wheel_io_step(tick, delayed);
+        gimbal_test_step();
         runtime_monitor_sample(tick, delayed);
+        taskENTER_CRITICAL();
+        motor_guard_complete(HAL_GetTick());
+        taskEXIT_CRITICAL();
     }
 }

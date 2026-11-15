@@ -2,9 +2,15 @@ set(app_sources
     robot_app.c
     bsp/board_outputs.c
     bsp/debug_uart.c
+    bsp/gimbal_test.c
+    bsp/imu.c
     bsp/encoder.c
     bsp/motor.c
+    bsp/time_us.c
+    control/wheel_speed.c
     debug/motor_commands.c
+    debug/position_commands.c
+    debug/speed_commands.c
     runtime/wheel_io.c
     debug/debug_console.c
     runtime/runtime_monitor.c
@@ -17,3 +23,7 @@ set_source_files_properties(${app_sources}
     TARGET_DIRECTORY rescue.elf
     PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Werror"
 )
+
+# 有限数校验必须在 Release 中保留 IEEE 浮点语义。
+set_property(SOURCE control/wheel_speed.c runtime/wheel_io.c debug/speed_commands.c debug/position_commands.c
+    TARGET_DIRECTORY rescue.elf APPEND PROPERTY COMPILE_OPTIONS -fno-fast-math)
