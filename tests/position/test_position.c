@@ -1,5 +1,6 @@
 #include "runtime/wheel_io.h"
 #include "debug/position_commands.h"
+#include "config/wheel_config.h"
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
@@ -64,6 +65,14 @@ static void start(int32_t left, int32_t right)
     step();
     assert(pos().state == POSITION_RUNNING);
 }
+/* 位置环初值会随整定调整，测试按当前配置计算目标 RPM，避免硬编码参数。 */
+static float expected_rpm(int32_t error)
+{
+    float rpm = (float)error * WHEEL_POSITION_KP;
+    if (rpm > WHEEL_POSITION_MAX_RPM) { rpm = WHEEL_POSITION_MAX_RPM; }
+    if (rpm < -WHEEL_POSITION_MAX_RPM) { rpm = -WHEEL_POSITION_MAX_RPM; }
+    return rpm;
+}
 
 int main(void)
 {
@@ -75,7 +84,8 @@ int main(void)
     assert(!wheel_io_position_move(10, 0, &id));
     wheel_io_stop(); step();
     start(198, 0);
-    assert(pos().target_rpm[0] == 20.0f && pos().target_rpm[1] == 0.0f);
+    assert(fabsf(pos().target_rpm[0] - expected_rpm(198)) < 0.001f &&
+           pos().target_rpm[1] == 0.0f);
     assert(motor.applied_left > 0 && motor.phase_right == MOTOR_OFF);
     assert(!wheel_io_request(100, 0, 100));
     assert(!wheel_io_position_move(1, 0, &id));
@@ -91,7 +101,8 @@ int main(void)
     assert(pos().state == POSITION_DONE && motor.phase_left == MOTOR_OFF);
 
     init(); start(-198, 100);
-    assert(pos().target_rpm[0] == -20.0f && fabsf(pos().target_rpm[1] - 15.0f) < 0.001f);
+    assert(fabsf(pos().target_rpm[0] - expected_rpm(-198)) < 0.001f &&
+           fabsf(pos().target_rpm[1] - expected_rpm(100)) < 0.001f);
     total[0] -= 198; total[1] += 96; step(); settle();
     assert(pos().state == POSITION_DONE && pos().actual[0] == -198 && pos().actual[1] == 96);
 

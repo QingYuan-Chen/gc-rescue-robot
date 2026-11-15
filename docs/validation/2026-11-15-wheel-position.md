@@ -2,9 +2,10 @@
 
 本轮在当前未提交工作区加入左右轮相对位置环，输入为编码器 counts，输出为速度环目标 RPM。调试参数、命令和上板步骤见[车轮相对位置环调试](../车轮相对位置环调试.md)。
 
-- STM32 `stm32-debug`、`stm32-release` 预设构建通过。
-- 使用 MinGW GCC 在 `-O0` 和 `-O2` 下编译并运行 `tests/position/test_position.c`，均通过。替身覆盖相对起点、正负位移、单轮隔离、双轮不同目标、到位后释放、一次补偿、补偿超差、命令互斥、超时、主动停车、待执行命令取消、故障和命令解析。电机、编码器和任务时钟均为主机替身。
-- Debug BIN SHA256：`5BD7AD0F1F3261CE92568EAE247A507534E15DF0F63B85582B7B0B11DBBDEB11`。
-- Release BIN SHA256：`6E10971AAB61F3CCB748797BD042818FFFC711D205F2669812BA9F789673FEC4`。
+- 当前固件初值：Kp 1.10、Ki 0、Kd 0.08，目标速度限幅 ±80 RPM，到位容差 ±12 counts；参数为本轮整定值，待上板验证。
+- STM32 `stm32-debug`、`stm32-release` 预设重新构建通过（2026-11-15）。Debug FLASH 83,848 B / RAM_D1 27,208 B；Release FLASH 90,160 B / RAM_D1 27,232 B。
+- 使用 MinGW GCC 15.2.0 在 `-O0` 和 `-O2` 下编译并运行 `tests/position/test_position.c`，均通过。测试按 `wheel_config.h` 当前初值计算期望目标 RPM，不硬编码整定参数。替身覆盖相对起点、正负位移、单轮隔离、双轮不同目标、到位后释放、一次补偿、补偿超差、命令互斥、超时、主动停车、待执行命令取消、故障和命令解析。电机、编码器和任务时钟均为主机替身。
+- Debug BIN SHA256：`0E165A5D662A63D3C5CA850869E9F347D2890631ED302938001E8FBFF9F33AF1`。
+- Release BIN SHA256：`E5B598E7B58850D9425301136691A5D9A800DEDBD47369F44A1EF571CCD82635`。
 
 本轮未烧录、未操作电机；实际速度跟随、过冲、补偿、停止和到位精度待按调试说明上板验证。
