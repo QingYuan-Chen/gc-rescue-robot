@@ -1,6 +1,5 @@
 #include "debug_console.h"
 #include "motor_commands.h"
-#include "position_commands.h"
 #include "speed_commands.h"
 
 #include "bsp/debug_uart.h"
@@ -159,11 +158,7 @@ static void execute_line(char *line)
     {
         return;
     }
-    if (position_commands_execute(line, response, sizeof(response)))
-    {
-        write_text(response);
-    }
-    else if (speed_commands_execute(line, response, sizeof(response)))
+    if (speed_commands_execute(line, response, sizeof(response)))
     {
         if (response[0] != '\0') { write_text(response); }
     }
@@ -176,7 +171,7 @@ static void execute_line(char *line)
         write_text("OK help: ping | status | get report_ms | "
                    "set report_ms <0|100..60000> | encoder | motor status | motor stop | "
                    "motor left/right <duty> <ms> | motor both <left> <right> <ms> | "
-                   "speed cfg/set/apply/target/stop/get | pos move/target/set/get | vofa on/off/period | imu get\r\n");
+                   "speed cfg/set/apply/target/stop/get | vofa on/off/period | imu get\r\n");
     }
     else if (strcmp(line, "ping") == 0)
     {

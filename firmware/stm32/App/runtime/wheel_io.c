@@ -17,8 +17,6 @@ _Static_assert(WHEEL_SPEED_SAMPLE_PERIOD_MS % WHEEL_SAMPLE_PERIOD_MS == 0U,
                "Speed sampling period must be a multiple of the control period");
 _Static_assert(WHEEL_SPEED_SAMPLE_PERIOD_MS >= WHEEL_SAMPLE_PERIOD_MS,
                "Speed sampling period must be at least one control period");
-_Static_assert(WHEEL_POSITION_PERIOD_MS % WHEEL_SAMPLE_PERIOD_MS == 0U,
-               "Position period must be a multiple of the control period");
 
 typedef struct
 {
@@ -39,18 +37,6 @@ static wheel_speed_config_t staged[2];
 static wheel_speed_t controllers[2];
 static float targets[2];
 static wheel_io_status_t published;
-static bool position_claimed, position_pending, position_started;
-static bool position_slider, position_retarget_pending;
-static int32_t position_retarget;
-static wheel_position_status_t position, position_published;
-static wheel_position_config_t position_config, position_active_config;
-static int64_t position_start[2];
-static int64_t position_previous_actual[2];
-static float position_integral[2];
-/* 0 未参与，1 运动，2 停稳中，3 已停稳。 */
-static uint8_t position_phase[2];
-static int8_t position_direction[2];
-static uint32_t position_last_update;
 
 static bool queue_event_locked(speed_event_t *event)
 {
@@ -88,12 +74,6 @@ bool wheel_io_init(uint32_t now_ms)
 {
     request = (drive_request_t){0};
     published = (wheel_io_status_t){0};
-    position = position_published = (wheel_position_status_t){0};
-    position_config = (wheel_position_config_t){.kp = WHEEL_POSITION_KP,
-        .ki = WHEEL_POSITION_KI, .kd = WHEEL_POSITION_KD,
-        .max_rpm = WHEEL_POSITION_MAX_RPM, .tolerance_counts = WHEEL_POSITION_TOLERANCE_COUNTS};
-    position_claimed = position_pending = position_started = false;
-    position_slider = position_retarget_pending = false;
     stop_pending = session_claimed = event_inflight = false;
     event_head = event_count = result_head = result_count = outstanding = 0U;
     next_id = 0U;
@@ -125,7 +105,7 @@ bool wheel_io_request(int16_t left, int16_t right, uint32_t duration_ms)
     }
     taskENTER_CRITICAL();
     const bool accepted = published.ready && !published.fault && !motor_guard_fault() &&
-                          !stop_pending && !session_claimed && !position_claimed;
+                          !stop_pending && !session_claimed;
     if (accepted) { request = (drive_request_t){left, right, osKernelGetTickCount(), duration_ms}; }
     taskEXIT_CRITICAL();
     return accepted;
@@ -155,8 +135,7 @@ bool wheel_io_speed_stage(unsigned side, speed_param_t parameter, float value, b
     else if (parameter == SPEED_PARAM_KI) { next.ki = value; }
     else if (parameter == SPEED_PARAM_RAMP) { next.ramp_rpm_s = value; }
     else { next.limit = (int16_t)value; }
-    bool accepted = !published.fault && !motor_guard_fault() && !stop_pending &&
-                    (!live || !position_claimed);
+    bool accepted = !published.fault && !motor_guard_fault() && !stop_pending;
     if (accepted && live)
     {
         speed_event_t event = {.type = SPEED_APPLY, .wheels = (uint8_t)(1U << side)};
@@ -186,7 +165,7 @@ bool wheel_io_speed_enqueue(speed_event_t *event)
     if (event->wheels == 0U || event->wheels > 3U) { return false; }
     taskENTER_CRITICAL();
     bool accepted = published.ready && !published.fault && !motor_guard_fault() &&
-                    !stop_pending && !position_claimed;
+                    !stop_pending;
     if (event->type == SPEED_TARGET)
     {
         const uint32_t age = osKernelGetTickCount() - request.issued_ms;
@@ -246,189 +225,6 @@ bool wheel_io_speed_result_pending(void)
     return pending;
 }
 
-static bool position_move_locked(int32_t left, int32_t right, uint32_t *id)
-{
-    const uint32_t age = osKernelGetTickCount() - request.issued_ms;
-    const bool accepted = published.ready && !published.fault && !motor_guard_fault() &&
-                          !stop_pending && !session_claimed && !position_claimed &&
-                          !published.session && event_count == 0U && !event_inflight &&
-                          age >= request.duration_ms && published.remaining_ms == 0U &&
-                          published.motor.phase_left == MOTOR_OFF &&
-                          published.motor.phase_right == MOTOR_OFF;
-    if (accepted)
-    {
-        if (++next_id == 0U) { next_id++; }
-        position_published = (wheel_position_status_t){.id = next_id, .state = POSITION_QUEUED,
-                                                       .target = {left, right},
-                                                       .error = {left, right}};
-        *id = next_id;
-        position_claimed = position_pending = true;
-        position_active_config = position_config;
-    }
-    return accepted;
-}
-
-bool wheel_io_position_move(int32_t left, int32_t right, uint32_t *id)
-{
-    if (left < -WHEEL_POSITION_MAX_COUNTS || left > WHEEL_POSITION_MAX_COUNTS ||
-        right < -WHEEL_POSITION_MAX_COUNTS || right > WHEEL_POSITION_MAX_COUNTS ||
-        (left == 0 && right == 0)) { return false; }
-    taskENTER_CRITICAL();
-    const bool accepted = position_move_locked(left, right, id);
-    if (accepted) { position_slider = position_retarget_pending = false; }
-    taskEXIT_CRITICAL();
-    return accepted;
-}
-
-bool wheel_io_position_slider_left(int32_t target, uint32_t *id)
-{
-    if (target < -WHEEL_POSITION_MAX_COUNTS || target > WHEEL_POSITION_MAX_COUNTS) { return false; }
-    taskENTER_CRITICAL();
-    bool accepted = published.ready && !published.fault && !motor_guard_fault() && !stop_pending;
-    if (accepted && position_claimed && position_slider &&
-        (position_pending || position_published.state == POSITION_RUNNING))
-    {
-        position_retarget = target;
-        position_retarget_pending = true;
-        *id = position_published.id;
-    }
-    else if (accepted && target != 0)
-    {
-        accepted = position_move_locked(target, 0, id);
-        if (accepted) { position_slider = true; position_retarget_pending = false; }
-    }
-    else if (accepted && !position_claimed && !session_claimed && !published.session &&
-             event_count == 0U && !event_inflight && published.remaining_ms == 0U &&
-             published.motor.phase_left == MOTOR_OFF && published.motor.phase_right == MOTOR_OFF &&
-             osKernelGetTickCount() - request.issued_ms >= request.duration_ms)
-    {
-        *id = 0U;
-    }
-    else { accepted = false; }
-    taskEXIT_CRITICAL();
-    return accepted;
-}
-
-void wheel_io_position_get(wheel_position_status_t *status)
-{
-    taskENTER_CRITICAL();
-    *status = position_published;
-    taskEXIT_CRITICAL();
-}
-
-void wheel_io_position_snapshot(wheel_position_status_t *position_status,
-                                wheel_io_status_t *wheel_status)
-{
-    taskENTER_CRITICAL();
-    *position_status = position_published;
-    *wheel_status = published;
-    taskEXIT_CRITICAL();
-}
-
-void wheel_io_position_get_config(wheel_position_config_t *config)
-{
-    taskENTER_CRITICAL();
-    *config = position_config;
-    taskEXIT_CRITICAL();
-}
-
-bool wheel_io_position_set_config(const wheel_position_config_t *config)
-{
-    if (!isfinite(config->kp) || !isfinite(config->ki) || !isfinite(config->kd) ||
-        !isfinite(config->max_rpm) || config->kp < 0.001f ||
-        config->ki < 0.0f || config->ki > 2.0f || config->kd < 0.0f || config->kd > 2.0f ||
-        config->kp > 2.0f || config->max_rpm < 1.0f ||
-        config->max_rpm > WHEEL_POSITION_MAX_RPM || config->tolerance_counts < 1 ||
-        config->tolerance_counts > 100) { return false; }
-    taskENTER_CRITICAL();
-    const bool accepted = published.ready && !published.fault && !motor_guard_fault() &&
-                          !stop_pending && !position_claimed && !session_claimed &&
-                          !published.session && event_count == 0U && !event_inflight &&
-                          published.motor.phase_left == MOTOR_OFF &&
-                          published.motor.phase_right == MOTOR_OFF &&
-                          osKernelGetTickCount() - request.issued_ms >= request.duration_ms;
-    if (accepted) { position_config = *config; }
-    taskEXIT_CRITICAL();
-    return accepted;
-}
-
-static void position_update(const encoder_sample_t *encoder, const motor_status_t *motor,
-                            uint32_t now_ms)
-{
-    const int64_t totals[2] = {encoder->total_left, encoder->total_right};
-    const motor_phase_t motor_phase[2] = {motor->phase_left, motor->phase_right};
-    const uint32_t elapsed_ms = now_ms - position_last_update;
-    const bool update = elapsed_ms >= WHEEL_POSITION_PERIOD_MS;
-    if (update) { position_last_update = now_ms; }
-    position.elapsed_ms = now_ms - position.started_ms;
-    for (unsigned i = 0; i < 2U; i++)
-    {
-        position.actual[i] = totals[i] - position_start[i];
-        position.error[i] = (int64_t)position.target[i] - position.actual[i];
-        if (position_phase[i] == 0U) { continue; }
-        const int64_t error = position.error[i];
-        const bool in_tolerance = error >= -position_active_config.tolerance_counts &&
-                                  error <= position_active_config.tolerance_counts;
-        if (position_phase[i] == 1U &&
-            (in_tolerance || (position_direction[i] > 0 && error < 0) ||
-             (position_direction[i] < 0 && error > 0)))
-        {
-            position_phase[i] = 2U;
-            targets[i] = 0.0f;
-            position_integral[i] = 0.0f;
-        }
-        if (position_phase[i] == 2U && controllers[i].phase == WHEEL_SPEED_OFF &&
-            motor_phase[i] == MOTOR_OFF)
-        {
-            position_phase[i] = 3U;
-        }
-        if (position_phase[i] == 3U && !in_tolerance)
-        {
-            if (position.corrections[i] != 0U)
-            {
-                position.state = POSITION_OVERSHOOT;
-                return;
-            }
-            position.corrections[i]++;
-            position_phase[i] = 1U;
-            position_direction[i] = error > 0 ? 1 : -1;
-            position_previous_actual[i] = position.actual[i];
-            position_integral[i] = 0.0f;
-        }
-        if (position_phase[i] == 1U && update)
-        {
-            const float dt = (float)elapsed_ms * 0.001f;
-            const float p = (float)error * position_active_config.kp;
-            const float d = -(float)(position.actual[i] - position_previous_actual[i]) *
-                            position_active_config.kd / dt;
-            float next_integral = position_integral[i] +
-                                  position_active_config.ki * (float)error * dt;
-            if (next_integral > position_active_config.max_rpm) { next_integral = position_active_config.max_rpm; }
-            if (next_integral < -position_active_config.max_rpm) { next_integral = -position_active_config.max_rpm; }
-            const float candidate = p + next_integral + d;
-            if ((candidate <= position_active_config.max_rpm &&
-                 candidate >= -position_active_config.max_rpm) ||
-                (candidate > position_active_config.max_rpm && error < 0) ||
-                (candidate < -position_active_config.max_rpm && error > 0))
-            {
-                position_integral[i] = next_integral;
-            }
-            position_previous_actual[i] = position.actual[i];
-            float rpm = p + position_integral[i] + d;
-            if (rpm > position_active_config.max_rpm) { rpm = position_active_config.max_rpm; }
-            if (rpm < -position_active_config.max_rpm) { rpm = -position_active_config.max_rpm; }
-            if ((position_direction[i] > 0 && rpm < 0.0f) ||
-                (position_direction[i] < 0 && rpm > 0.0f)) { rpm = 0.0f; }
-            targets[i] = rpm;
-        }
-        position.target_rpm[i] = targets[i];
-    }
-    if ((position_phase[0] == 0U || position_phase[0] == 3U) &&
-        (position_phase[1] == 0U || position_phase[1] == 3U))
-    {
-        position.state = POSITION_DONE;
-    }
-}
 
 static bool apply_event(const speed_event_t *event, wheel_io_status_t *next, uint32_t now_ms)
 {
@@ -504,17 +300,6 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
     taskENTER_CRITICAL();
     bool stopped = stop_pending;
     stop_pending = false;
-    const bool start_position = position_pending && !stopped;
-    if (position_pending)
-    {
-        position = position_published;
-        position_started = false;
-        position_pending = false;
-        if (stopped) { position.state = POSITION_STOPPED; }
-    }
-    const bool retarget = position_retarget_pending && !stopped;
-    const int32_t new_target = position_retarget;
-    position_retarget_pending = false;
     const drive_request_t command = request;
     speed_event_t event = {0};
     const bool has_event = !stopped && event_count != 0U;
@@ -533,60 +318,6 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
         next.fault = true;
         next.stop_reason = motor_guard_fault() ? 2U : 1U;
     }
-    if (start_position && !next.fault)
-    {
-        if (retarget) { position.target[0] = new_target; }
-        position.state = POSITION_RUNNING;
-        position_started = true;
-        position.started_ms = now_ms;
-        position_last_update = now_ms - WHEEL_POSITION_PERIOD_MS;
-        position_start[0] = next.encoder.total_left;
-        position_start[1] = next.encoder.total_right;
-        next.selected = 0U;
-        for (unsigned i = 0; i < 2U; i++)
-        {
-            position_phase[i] = position.target[i] == 0 ? 0U : 1U;
-            position_direction[i] = position.target[i] > 0 ? 1 : -1;
-            position_previous_actual[i] = 0;
-            position_integral[i] = 0.0f;
-            if (position_phase[i] != 0U) { next.selected |= (uint8_t)(1U << i); }
-        }
-        next.session = next.speed_running = true;
-        next.stop_reason = 0U;
-    }
-    else if (retarget && !next.fault &&
-             (position.state == POSITION_RUNNING || position.state == POSITION_DONE))
-    {
-        if (position.state == POSITION_DONE)
-        {
-            position.state = POSITION_RUNNING;
-            position_phase[0] = 3U;
-            next.selected = 1U;
-            next.session = next.speed_running = true;
-        }
-        position.target[0] = new_target;
-        position.corrections[0] = 0U;
-    }
-    if (position.state == POSITION_RUNNING)
-    {
-        if (stopped || next.fault)
-        {
-            position.state = next.fault ? POSITION_FAULT : POSITION_STOPPED;
-            position.elapsed_ms = now_ms - position.started_ms;
-        }
-        else if (now_ms - position.started_ms >= WHEEL_POSITION_TIMEOUT_MS)
-        {
-            position.elapsed_ms = now_ms - position.started_ms;
-            position.state = POSITION_TIMEOUT;
-            stopped = true;
-        }
-        else
-        {
-            position_update(&next.encoder, &next.motor, now_ms);
-            if (position.state != POSITION_RUNNING) { stopped = true; }
-        }
-    }
-    else if (start_position && next.fault) { position.state = POSITION_FAULT; }
     if (stopped || next.fault)
     {
         if (has_event)
@@ -639,7 +370,7 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
         }
         next.requested_left = controllers[0].requested;
         next.requested_right = controllers[1].requested;
-        if (position.state != POSITION_RUNNING && targets[0] == 0.0f && targets[1] == 0.0f &&
+        if (targets[0] == 0.0f && targets[1] == 0.0f &&
             controllers[0].phase == WHEEL_SPEED_OFF && controllers[1].phase == WHEEL_SPEED_OFF)
         {
             next.speed_running = false;
@@ -667,11 +398,6 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
     taskENTER_CRITICAL();
     if (next.fault)
     {
-        if (position.state == POSITION_RUNNING)
-        {
-            position.state = POSITION_FAULT;
-            position.elapsed_ms = now_ms - position.started_ms;
-        }
         next.requested_left = next.requested_right = 0;
         brakes[0] = brakes[1] = false;
     }
@@ -711,12 +437,6 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
     }
     if (next.fault)
     {
-        if (position_claimed && (position.state == POSITION_RUNNING ||
-                                 position.state == POSITION_DONE))
-        {
-            position.state = POSITION_FAULT;
-            if (position_started) { position.elapsed_ms = now_ms - position.started_ms; }
-        }
         next.session = next.speed_running = false;
         targets[0] = targets[1] = 0.0f;
         wheel_speed_reset(&controllers[0]);
@@ -741,32 +461,8 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
     next.speed[1] = controllers[1];
     next.target_rpm[0] = targets[0];
     next.target_rpm[1] = targets[1];
-    if (position.state != POSITION_RUNNING)
-    {
-        if (position_started && position_claimed)
-        {
-            position.actual[0] = next.encoder.total_left - position_start[0];
-            position.actual[1] = next.encoder.total_right - position_start[1];
-            position.error[0] = (int64_t)position.target[0] - position.actual[0];
-            position.error[1] = (int64_t)position.target[1] - position.actual[1];
-        }
-        position.target_rpm[0] = position.target_rpm[1] = 0.0f;
-    }
     taskENTER_CRITICAL();
     published = next;
-    if (position_claimed && !position_pending)
-    {
-        position_published = position;
-        if (position.state != POSITION_RUNNING && position.state != POSITION_DONE)
-        {
-            position_retarget_pending = false;
-        }
-        if (position.state != POSITION_RUNNING && !position_retarget_pending && next.motor.phase_left == MOTOR_OFF &&
-            next.motor.phase_right == MOTOR_OFF)
-        {
-            position_claimed = false;
-        }
-    }
     taskEXIT_CRITICAL();
 }
 

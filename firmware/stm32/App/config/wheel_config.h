@@ -11,15 +11,6 @@
 /* 当前最大 PWM 条件下的实测速度，左右轮统一使用，单位 RPM。 */
 #define WHEEL_TARGET_MIN_RPM (-81.0f)
 #define WHEEL_TARGET_MAX_RPM 97.0f
-/* 位置环初次联调参数，需通过实车确认。 */
-#define WHEEL_POSITION_PERIOD_MS 20U
-#define WHEEL_POSITION_KP 1.10f
-#define WHEEL_POSITION_KI 0.0f
-#define WHEEL_POSITION_KD 0.08f
-#define WHEEL_POSITION_MAX_RPM 80.0f
-#define WHEEL_POSITION_TOLERANCE_COUNTS 12
-#define WHEEL_POSITION_MAX_COUNTS 1980
-#define WHEEL_POSITION_TIMEOUT_MS 10000U
 #define WHEEL_ENCODER_FILTER 10U
 
 /* 根据调试反馈暂定的速度换算系数，实际转速仍需独立测量校验。 */

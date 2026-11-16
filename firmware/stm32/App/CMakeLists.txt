@@ -9,7 +9,6 @@ set(app_sources
     bsp/time_us.c
     control/wheel_speed.c
     debug/motor_commands.c
-    debug/position_commands.c
     debug/speed_commands.c
     runtime/wheel_io.c
     debug/debug_console.c
@@ -25,5 +24,5 @@ set_source_files_properties(${app_sources}
 )
 
 # 有限数校验必须在 Release 中保留 IEEE 浮点语义。
-set_property(SOURCE control/wheel_speed.c runtime/wheel_io.c debug/speed_commands.c debug/position_commands.c
+set_property(SOURCE control/wheel_speed.c runtime/wheel_io.c debug/speed_commands.c
     TARGET_DIRECTORY rescue.elf APPEND PROPERTY COMPILE_OPTIONS -fno-fast-math)

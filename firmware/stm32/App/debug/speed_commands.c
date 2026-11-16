@@ -174,18 +174,13 @@ bool speed_commands_execute(char *line, char *response, size_t capacity)
             view = wheels(tokens[2]);
             last_wave_ms = osKernelGetTickCount();
         }
-        else if (count == 3U && strcmp(tokens[1], "on") == 0 && strcmp(tokens[2], "pos") == 0)
-        {
-            view = 4U;
-            last_wave_ms = osKernelGetTickCount();
-        }
         else if (count == 3U && strcmp(tokens[1], "period") == 0 &&
                  (!strcmp(tokens[2], "20") || !strcmp(tokens[2], "50") || !strcmp(tokens[2], "100")))
         {
             period_ms = (uint32_t)atoi(tokens[2]);
             last_wave_ms = osKernelGetTickCount();
         }
-        else { snprintf(response, capacity, "ERR vofa on left/right/both/pos | off | period 20/50/100\r\n"); return true; }
+        else { snprintf(response, capacity, "ERR vofa on left/right/both | off | period 20/50/100\r\n"); return true; }
         snprintf(response, capacity, "OK vofa view=%u period_ms=%lu\r\n", view, (unsigned long)period_ms);
         return true;
     }
@@ -271,18 +266,7 @@ bool speed_commands_wave_due(uint32_t tick, char *response, size_t capacity)
     wheel_io_status_t s;
     char a[24], b[24], c[24], d[24], e[24], f[24];
     int written;
-    if (view == 4U)
-    {
-        wheel_position_status_t p;
-        wheel_io_position_snapshot(&p, &s);
-        fixed(a, sizeof(a), p.target_rpm[0]);
-        fixed(b, sizeof(b), s.speed[0].feedback_rpm);
-        written = snprintf(response, capacity,
-                 "pos:%lu,%ld,%" PRId64 ",%" PRId64 ",%s,%s,%d,%u\n",
-                 (unsigned long)s.sample_ms, (long)p.target[0], p.actual[0], p.error[0],
-                 a, b, s.motor.applied_left, p.state);
-    }
-    else if (view == 3U)
+    if (view == 3U)
     {
         wheel_io_get_status(&s);
         fixed(a, sizeof(a), s.speed[0].effective_rpm);
