@@ -1,6 +1,7 @@
 #include "imu.h"
 
 #include "FreeRTOS.h"
+#include "cmsis_os2.h"
 #include "task.h"
 #include <string.h>
 
@@ -89,6 +90,40 @@ bool imu_start(void)
     latest.receiving = true;
     HAL_NVIC_EnableIRQ(USART3_IRQn);
     return true;
+}
+
+static bool send_frame(uint8_t frame[5])
+{
+    return HAL_UART_Transmit(&imu_uart, frame, 5U, 100U) == HAL_OK;
+}
+
+bool imu_set_output_rate(uint16_t hz)
+{
+    /* JY61P RRATE：1=0.2、2=0.5、3=1、4=2、5=5、6=10、7=20、8=50、9=100 Hz。
+     * 2026-11-16 实测确认 0x08=50 Hz、0x09=100 Hz。 */
+    uint8_t rate;
+    switch (hz)
+    {
+    case 0: rate = 2U; break;
+    case 1: rate = 3U; break;
+    case 2: rate = 4U; break;
+    case 5: rate = 5U; break;
+    case 10: rate = 6U; break;
+    case 20: rate = 7U; break;
+    case 50: rate = 8U; break;
+    case 100: rate = 9U; break;
+    case 200: rate = 10U; break;
+    default: return false;
+    }
+
+    uint8_t unlock[5] = {0xFFU, 0xAAU, 0x69U, 0x88U, 0xB5U};
+    uint8_t set_rate[5] = {0xFFU, 0xAAU, 0x03U, rate, 0x00U};
+    uint8_t save[5] = {0xFFU, 0xAAU, 0x00U, 0x00U, 0x00U};
+    if (!send_frame(unlock)) { return false; }
+    osDelay(20U);
+    if (!send_frame(set_rate)) { return false; }
+    osDelay(20U);
+    return send_frame(save);
 }
 
 void imu_get_status(imu_status_t *status)

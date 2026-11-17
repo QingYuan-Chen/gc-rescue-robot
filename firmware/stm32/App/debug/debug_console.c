@@ -1,10 +1,12 @@
 #include "debug_console.h"
+#include "chassis_commands.h"
 #include "motor_commands.h"
 #include "speed_commands.h"
 
 #include "bsp/debug_uart.h"
 #include "bsp/imu.h"
 #include "bsp/board_outputs.h"
+#include "runtime/heading.h"
 #include "runtime/runtime_monitor.h"
 #include "runtime/wheel_io.h"
 
@@ -13,6 +15,7 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define DEBUG_CONSOLE_LINE_CAPACITY 96U
@@ -113,6 +116,16 @@ static void report_imu(void)
                  (unsigned long)(now - imu.angle_ms));
         write_text(response);
     }
+    heading_status_t heading;
+    heading_get_status(&heading);
+    snprintf(response, sizeof(response),
+             "OK imu heading yaw_mdeg=%ld rate_mdps=%ld age_ms=%lu period_ms=%lu "
+             "valid=%u jump=%u\r\n",
+             (long)(heading.yaw_rad * 180000.0f / 3.14159265358979323846f),
+             (long)(heading.yaw_rate_rad_s * 180000.0f / 3.14159265358979323846f),
+             (unsigned long)heading.age_ms, (unsigned long)heading.frame_period_ms,
+             heading.valid ? 1U : 0U, heading.jump_error ? 1U : 0U);
+    write_text(response);
 }
 
 static bool parse_report_ms(const char *text, uint32_t *value)
@@ -162,6 +175,10 @@ static void execute_line(char *line)
     {
         if (response[0] != '\0') { write_text(response); }
     }
+    else if (chassis_commands_execute(line, response, sizeof(response)))
+    {
+        write_text(response);
+    }
     else if (motor_commands_execute(line, response, sizeof(response)))
     {
         write_text(response);
@@ -171,7 +188,12 @@ static void execute_line(char *line)
         write_text("OK help: ping | status | get report_ms | "
                    "set report_ms <0|100..60000> | encoder | motor status | motor stop | "
                    "motor left/right <duty> <ms> | motor both <left> <right> <ms> | "
-                   "speed cfg/set/apply/target/stop/get | vofa on/off/period | imu get\r\n");
+                   "speed cfg/set/apply/target/stop/get | "
+                   "chassis vw <v_mm_s> <w_deg_s> <ms> | chassis turn <deg> | "
+                   "chassis straight <v_mm_s> <ms> [mm] | chassis stop/get | "
+                   "turn set/hold set <param> <value> | "
+                   "vofa on left/right/both/chassis/turn | vofa off | "
+                   "vofa period 20/50/100 | imu get | imu rate <0,1,2,5,10,20,50,100,200>\r\n");
     }
     else if (strcmp(line, "ping") == 0)
     {
@@ -180,6 +202,21 @@ static void execute_line(char *line)
     else if (strcmp(line, "status") == 0)
     {
         report_status();
+    }
+    else if (strncmp(line, "imu rate ", 9U) == 0)
+    {
+        char *end = NULL;
+        const unsigned long hz = strtoul(line + 9, &end, 10);
+        if (end == line + 9 || end == NULL || *end != '\0' || hz > 200UL ||
+            !imu_set_output_rate((uint16_t)hz))
+        {
+            write_text("ERR imu rate; use 0,1,2,5,10,20,50,100,200\r\n");
+        }
+        else
+        {
+            snprintf(response, sizeof(response), "OK imu rate=%lu saved; verify with imu get\r\n", hz);
+            write_text(response);
+        }
     }
     else if (strcmp(line, "imu get") == 0)
     {

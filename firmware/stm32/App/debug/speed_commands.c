@@ -1,7 +1,10 @@
 #include "speed_commands.h"
 
+#include "runtime/chassis.h"
+#include "runtime/heading.h"
 #include "runtime/wheel_io.h"
 #include "bsp/debug_uart.h"
+#include "config/chassis_config.h"
 #include "cmsis_os2.h"
 
 #include <inttypes.h>
@@ -174,13 +177,24 @@ bool speed_commands_execute(char *line, char *response, size_t capacity)
             view = wheels(tokens[2]);
             last_wave_ms = osKernelGetTickCount();
         }
+        else if (count == 3U && strcmp(tokens[1], "on") == 0 &&
+                 strcmp(tokens[2], "chassis") == 0)
+        {
+            view = 4U;
+            last_wave_ms = osKernelGetTickCount();
+        }
+        else if (count == 3U && strcmp(tokens[1], "on") == 0 && strcmp(tokens[2], "turn") == 0)
+        {
+            view = 5U;
+            last_wave_ms = osKernelGetTickCount();
+        }
         else if (count == 3U && strcmp(tokens[1], "period") == 0 &&
                  (!strcmp(tokens[2], "20") || !strcmp(tokens[2], "50") || !strcmp(tokens[2], "100")))
         {
             period_ms = (uint32_t)atoi(tokens[2]);
             last_wave_ms = osKernelGetTickCount();
         }
-        else { snprintf(response, capacity, "ERR vofa on left/right/both | off | period 20/50/100\r\n"); return true; }
+        else { snprintf(response, capacity, "ERR vofa on left/right/both/chassis/turn | off | period 20/50/100\r\n"); return true; }
         snprintf(response, capacity, "OK vofa view=%u period_ms=%lu\r\n", view, (unsigned long)period_ms);
         return true;
     }
@@ -264,9 +278,53 @@ bool speed_commands_wave_due(uint32_t tick, char *response, size_t capacity)
     if (tick - last_wave_ms >= 2U * period_ms) { dropped_waves += (tick - last_wave_ms) / period_ms - 1U; }
     last_wave_ms = tick;
     wheel_io_status_t s;
-    char a[24], b[24], c[24], d[24], e[24], f[24];
+    char a[24], b[24], c[24], d[24], e[24], f[24], g[24], h[24];
     int written;
-    if (view == 3U)
+    if (view == 4U)
+    {
+        chassis_status_t chassis;
+        heading_status_t heading;
+        chassis_get_status(&chassis);
+        heading_get_status(&heading);
+        wheel_io_get_status(&s);
+        const float mm_per_rpm = 3.14159265358979323846f * CHASSIS_WHEEL_DIAMETER_MM / 60.0f;
+        const float encoder_omega_deg_s =
+            ((s.speed[1].feedback_rpm - s.speed[0].feedback_rpm) * mm_per_rpm /
+             CHASSIS_TRACK_WIDTH_MM) * 57.2957795f;
+        fixed(a, sizeof(a), chassis.v_mm_s);
+        fixed(b, sizeof(b), chassis.omega_deg_s);
+        fixed(c, sizeof(c), chassis.left_rpm);
+        fixed(d, sizeof(d), s.speed[0].feedback_rpm);
+        fixed(e, sizeof(e), chassis.right_rpm);
+        fixed(f, sizeof(f), s.speed[1].feedback_rpm);
+        fixed(g, sizeof(g), heading.yaw_rate_rad_s * 57.2957795f);
+        fixed(h, sizeof(h), encoder_omega_deg_s);
+        written = snprintf(response, capacity,
+                 "chassis:%lu,%s,%s,%s,%s,%s,%s,%s,%s,%u\n",
+                 (unsigned long)s.sample_ms, a, b, c, d, e, f, g, h,
+                 chassis.saturated ? 1U : 0U);
+    }
+    else if (view == 5U)
+    {
+        chassis_status_t chassis;
+        heading_status_t heading;
+        chassis_get_status(&chassis);
+        heading_get_status(&heading);
+        wheel_io_get_status(&s);
+        fixed(a, sizeof(a), chassis.target_yaw_deg);
+        fixed(b, sizeof(b), chassis.yaw_deg);
+        fixed(c, sizeof(c), chassis.yaw_error_deg);
+        fixed(d, sizeof(d), chassis.yaw_rate_dps);
+        fixed(e, sizeof(e), chassis.omega_deg_s);
+        fixed(f, sizeof(f), chassis.left_rpm);
+        fixed(g, sizeof(g), chassis.right_rpm);
+        written = snprintf(response, capacity,
+                 "turn:%lu,%s,%s,%s,%s,%s,%s,%s,%u,%u,%lu\n",
+                 (unsigned long)s.sample_ms, a, b, c, d, e, f, g,
+                 (unsigned)chassis.mode, chassis.stop_reason,
+                 (unsigned long)heading.age_ms);
+    }
+    else if (view == 3U)
     {
         wheel_io_get_status(&s);
         fixed(a, sizeof(a), s.speed[0].effective_rpm);

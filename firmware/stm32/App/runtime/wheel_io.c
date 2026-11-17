@@ -36,6 +36,8 @@ static uint8_t event_head, event_count, result_head, result_count, outstanding;
 static wheel_speed_config_t staged[2];
 static wheel_speed_t controllers[2];
 static float targets[2];
+static float chassis_targets[2];
+static bool chassis_claimed;
 static wheel_io_status_t published;
 
 static bool queue_event_locked(speed_event_t *event)
@@ -75,6 +77,8 @@ bool wheel_io_init(uint32_t now_ms)
     request = (drive_request_t){0};
     published = (wheel_io_status_t){0};
     stop_pending = session_claimed = event_inflight = false;
+    chassis_claimed = false;
+    chassis_targets[0] = chassis_targets[1] = 0.0f;
     event_head = event_count = result_head = result_count = outstanding = 0U;
     next_id = 0U;
     targets[0] = targets[1] = 0.0f;
@@ -105,7 +109,7 @@ bool wheel_io_request(int16_t left, int16_t right, uint32_t duration_ms)
     }
     taskENTER_CRITICAL();
     const bool accepted = published.ready && !published.fault && !motor_guard_fault() &&
-                          !stop_pending && !session_claimed;
+                          !stop_pending && !session_claimed && !chassis_claimed;
     if (accepted) { request = (drive_request_t){left, right, osKernelGetTickCount(), duration_ms}; }
     taskEXIT_CRITICAL();
     return accepted;
@@ -116,6 +120,8 @@ void wheel_io_stop(void)
     taskENTER_CRITICAL();
     request = (drive_request_t){0};
     stop_pending = true;
+    chassis_claimed = false;
+    chassis_targets[0] = chassis_targets[1] = 0.0f;
     cancel_events_locked(osKernelGetTickCount());
     taskEXIT_CRITICAL();
 }
@@ -135,7 +141,8 @@ bool wheel_io_speed_stage(unsigned side, speed_param_t parameter, float value, b
     else if (parameter == SPEED_PARAM_KI) { next.ki = value; }
     else if (parameter == SPEED_PARAM_RAMP) { next.ramp_rpm_s = value; }
     else { next.limit = (int16_t)value; }
-    bool accepted = !published.fault && !motor_guard_fault() && !stop_pending;
+    bool accepted = !published.fault && !motor_guard_fault() && !stop_pending &&
+                    (!live || !chassis_claimed);
     if (accepted && live)
     {
         speed_event_t event = {.type = SPEED_APPLY, .wheels = (uint8_t)(1U << side)};
@@ -165,7 +172,7 @@ bool wheel_io_speed_enqueue(speed_event_t *event)
     if (event->wheels == 0U || event->wheels > 3U) { return false; }
     taskENTER_CRITICAL();
     bool accepted = published.ready && !published.fault && !motor_guard_fault() &&
-                    !stop_pending;
+                    !stop_pending && !chassis_claimed;
     if (event->type == SPEED_TARGET)
     {
         const uint32_t age = osKernelGetTickCount() - request.issued_ms;
@@ -265,6 +272,37 @@ static bool apply_event(const speed_event_t *event, wheel_io_status_t *next, uin
     return false;
 }
 
+bool wheel_io_chassis_set(float left_rpm, float right_rpm)
+{
+    if (!isfinite(left_rpm) || !isfinite(right_rpm)) { return false; }
+    taskENTER_CRITICAL();
+    bool accepted = published.ready && !published.fault && !motor_guard_fault() && !stop_pending;
+    if (!chassis_claimed)
+    {
+        const uint32_t age = osKernelGetTickCount() - request.issued_ms;
+        accepted = accepted && !session_claimed && !event_inflight && event_count == 0U &&
+                   age >= request.duration_ms && published.remaining_ms == 0U &&
+                   published.motor.phase_left == MOTOR_OFF &&
+                   published.motor.phase_right == MOTOR_OFF;
+    }
+    if (accepted)
+    {
+        chassis_claimed = true;
+        chassis_targets[0] = left_rpm;
+        chassis_targets[1] = right_rpm;
+    }
+    taskEXIT_CRITICAL();
+    return accepted;
+}
+
+bool wheel_io_chassis_claimed(void)
+{
+    taskENTER_CRITICAL();
+    const bool claimed = chassis_claimed;
+    taskEXIT_CRITICAL();
+    return claimed;
+}
+
 void wheel_io_step(uint32_t now_ms, bool delay_error)
 {
     const uint32_t sample_us = time_us_now();
@@ -338,6 +376,8 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
         next.selected = 0U;
         taskENTER_CRITICAL();
         session_claimed = false;
+        chassis_claimed = false;
+        chassis_targets[0] = chassis_targets[1] = 0.0f;
         cancel_events_locked(now_ms);
         taskEXIT_CRITICAL();
     }
@@ -352,6 +392,16 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
         finish_event_locked(&event, accepted, now_ms);
         event_inflight = false;
         taskEXIT_CRITICAL();
+    }
+
+    if (!stopped && !next.fault && chassis_claimed)
+    {
+        targets[0] = chassis_targets[0];
+        targets[1] = chassis_targets[1];
+        next.selected = 3U;
+        next.session = true;
+        next.speed_running = true;
+        next.stop_reason = 0U;
     }
 
     bool brakes[2] = {false, false};
@@ -370,7 +420,7 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
         }
         next.requested_left = controllers[0].requested;
         next.requested_right = controllers[1].requested;
-        if (targets[0] == 0.0f && targets[1] == 0.0f &&
+        if (!chassis_claimed && targets[0] == 0.0f && targets[1] == 0.0f &&
             controllers[0].phase == WHEEL_SPEED_OFF && controllers[1].phase == WHEEL_SPEED_OFF)
         {
             next.speed_running = false;
@@ -381,7 +431,7 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
             taskEXIT_CRITICAL();
         }
     }
-    else if (!stopped && !next.fault && !next.session)
+    else if (!stopped && !next.fault && !next.session && !chassis_claimed)
     {
         const uint32_t age = now_ms - command.issued_ms;
         const bool active = age < command.duration_ms;
@@ -443,6 +493,8 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
         wheel_speed_reset(&controllers[1]);
         taskENTER_CRITICAL();
         session_claimed = false;
+        chassis_claimed = false;
+        chassis_targets[0] = chassis_targets[1] = 0.0f;
         request = (drive_request_t){0};
         cancel_events_locked(now_ms);
         taskEXIT_CRITICAL();

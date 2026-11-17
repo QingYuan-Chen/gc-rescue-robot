@@ -74,4 +74,8 @@ bool wheel_io_speed_enqueue(speed_event_t *event);
 bool wheel_io_speed_result(speed_result_t *result);
 bool wheel_io_speed_result_pending(void);
 
+/* 底盘层提交左右轮目标 RPM；返回 false 表示当前被其他控制源占用。 */
+bool wheel_io_chassis_set(float left_rpm, float right_rpm);
+bool wheel_io_chassis_claimed(void);
+
 #endif

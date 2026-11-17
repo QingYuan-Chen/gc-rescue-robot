@@ -17,6 +17,8 @@ typedef struct
 } imu_status_t;
 
 bool imu_start(void);
+/* 通过 USART3 发送维特智能寄存器命令，设置并保存输出频率。 */
+bool imu_set_output_rate(uint16_t hz);
 void imu_get_status(imu_status_t *status);
 bool imu_uart_rx_callback(UART_HandleTypeDef *uart);
 bool imu_uart_error_callback(UART_HandleTypeDef *uart);

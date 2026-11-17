@@ -11,7 +11,7 @@ cmake --preset stm32-debug
 cmake --build --preset stm32-debug --parallel 8
 ```
 
-Release 使用 `stm32-release`；输出在仓库根 `build/stm32-debug/` 和 `build/stm32-release/`。工具链路径从 PATH 发现。当前接口见[基础电机与编码器接口](../../docs/基础电机与编码器接口.md)，最近的实现验证见[2026-11-16 仅速度环回退记录](../../docs/validation/2026-11-16-speed-only-rollback.md)和[2026-11-12 速度环低通记录](../../docs/validation/2026-11-12-wheel-speed-low-pass.md)；位置环已撤出当前固件，相关实验记录仅保留在验证历史中。
+Release 使用 `stm32-release`；输出在仓库根 `build/stm32-debug/` 和 `build/stm32-release/`。工具链路径从 PATH 发现。当前接口见[基础电机与编码器接口](../../docs/基础电机与编码器接口.md)，最近的实现验证见[2026-11-16 差速与转向环记录](../../docs/validation/2026-11-16-chassis-heading.md)、[2026-11-16 仅速度环回退记录](../../docs/validation/2026-11-16-speed-only-rollback.md)和[2026-11-12 速度环低通记录](../../docs/validation/2026-11-12-wheel-speed-low-pass.md)；位置环已撤出当前固件，相关实验记录仅保留在验证历史中。
 
 协作规则以[工程规范](../../docs/工程规范.md)为准：修改与验证完成后供用户审核，获得对应授权才提交、推送或烧录。
 
