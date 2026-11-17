@@ -7,39 +7,25 @@
 ## 初次配置
 
 1. 使用 VOFA+ 串口数据源连接 UART8，选择 FireWater。命令使用 Str 模式并以换行结束。
-2. 添加以下命令与控件。左右轮上电默认 Kp 为 33、Ki 为 40，使用 `speed get` 回读后可设置目标值，也可继续调整参数。
+2. 左右轮 PI 参数固定在 `App/control/wheel_speed.c`：Kp 33、Ki 40、PWM 限幅 800‰、斜坡 300 RPM/s。不再提供在线修改接口，调整参数需改源码后重新编译。
 3. 波形初始关闭，发送 `vofa on left` 开启左轮视图；`vofa on right` 或 `vofa on both` 切换视图。`vofa period 20`、`50`、`100` 设置上报周期。
-
-| 控件 | Str 命令模板 | 建议滑块范围及步长 |
-| --- | --- | --- |
-| 左轮 Kp | `speed set left kp %f` | 0～50，步长 0.01 |
-| 左轮 Ki | `speed set left ki %f` | 0～100，步长 0.01 |
-| 左轮目标 RPM | `speed target left %f` | -81～97，步长 1 |
-| 左轮 PWM 上限 ‰ | `speed set left limit %f` | 1～800，步长 1 |
-| 左轮斜坡 RPM/s | `speed set left ramp %f` | 0～1000，步长 10 |
-| 右轮 Kp | `speed set right kp %f` | 0～50，步长 0.01 |
-| 右轮 Ki | `speed set right ki %f` | 0～100，步长 0.01 |
-| 右轮目标 RPM | `speed target right %f` | -81～97，步长 1 |
-| 右轮 PWM 上限 ‰ | `speed set right limit %f` | 1～800，步长 1 |
-| 右轮斜坡 RPM/s | `speed set right ramp %f` | 0～1000，步长 10 |
-
-滑块可直接使用未绑定命令的默认格式：将滑块名称设为命令去掉 `%f` 的部分，例如 `speed target left`、`speed set left kp`，VOFA+ 会发送 `speed target left:0`、`speed set left kp:1.000000`。也可在命令面板添加上表的 Str 命令并绑定滑块；两种方式均需以换行结束。每次拖动 `set` 滑块会发送新值，固件以该轮暂存参数组成完整配置，在控制周期生效。`target left/right` 滑块只更新对应轮目标。收到 `OK queued id=...` 后，以同编号的 `OK applied` 和生效值为准；队列满或数值无效时返回 `ERR`，需重新发送。滑块范围是界面初值，按调试需要调整；固件上限为 Kp 1000、Ki 10000、斜坡 10000、PWM 800‰。限幅必须为整数。
-
-目标范围按最大 PWM 时实测的正向约 97 RPM、负向约 −81 RPM 设置，暂时同时用于左右轮。接近极限速度时调节余量较小，调参时应留出余量。Kp 和 Ki 同为 0 时控制器输出为 0；两个参数范围是 VOFA+ 滑块设置，需在界面中手动调整。
 
 | 按钮 | 命令 |
 | --- | --- |
+| 左轮目标 | `speed target left <RPM>` |
+| 右轮目标 | `speed target right <RPM>` |
+| 双轮目标 | `speed target <左RPM> <右RPM>` |
 | 停车 | `speed stop` |
 | 状态 | `speed get` |
 | 波形开关 | `vofa on left` / `vofa on right` / `vofa on both` / `vofa off` |
 
-发送 `speed target left 10` 或拖动 `speed target left` 滑块到 10，目标生效后直接运行；左右轮参数可分别调整。目标持续保持，串口断开后仍按最后的目标运行；发送 `speed stop` 或 `motor stop` 立即停车并清目标，也可将目标设为零按斜坡减速后停车。故障会锁定输出直到复位。运行中调整的参数存在 RAM，复位后恢复固件默认值。首次调试先架空车轮，先单轮、低目标和低占空比，由用户手动整定。
+滑块可直接使用未绑定命令的默认格式：把滑块名称设为 `speed target left` 或 `speed target right`，VOFA+ 会发送 `speed target left:20`，固件会先把冒号转换成空格再解析。滑块范围和步长按调试需要设置，目标范围为 −81～97 RPM。
 
-## 批量设置和其他命令
+## 运行与状态
 
-`speed cfg left kp 2` 将值存入暂存区，`speed apply left` 将该轮全部暂存参数一起提交。`speed apply both` 同时提交左右轮。允许 `speed cfg left/right kp/ki/limit/ramp <值>`，每条应用有编号和最终回执。`speed target <左RPM> <右RPM>` 一次设置双轮，滑块命令单独设置对应轮。原有开环运动完成或停车后可切入速度控制。
+发送 `speed target left 10` 或拖动 `speed target left` 滑块到 10，目标在下一个控制周期生效并直接运行。目标持续保持，串口断开后仍按最后的目标运行；发送 `speed stop` 或 `motor stop` 立即停车并清目标，也可将目标设为零按斜坡减速后停车。故障会锁定输出直到复位。开环运动完成或停车后可切入速度控制。
 
-`speed get` 回读暂存与生效参数、目标、参考、速度、误差、P/I、未限幅输出、实际 PWM、饱和标志、停止原因、周期及波形丢弃数。原因：0 无、1 周期错误、2 电机/心跳故障、3 数值故障、4 手动停车。速度控制期间拒绝开环运动命令；停车后可使用原有 `motor` 开环命令。
+`speed get` 回读目标、参考、速度、误差、P/I、未限幅输出、实际 PWM、饱和标志、停止原因、周期及波形丢弃数。原因：0 无、1 周期错误、2 电机/心跳故障、3 数值故障、4 手动停车。速度控制期间拒绝开环运动命令；停车后可使用原有 `motor` 开环命令。
 
 ## 波形通道
 
@@ -49,6 +35,6 @@
 
 ## 状态与验证
 
-速度环左右轮默认 Kp 为 33、Ki 为 40，限幅初始均为 −800～800‰，可分别调低限幅；斜坡初始 300 RPM/s。零目标以短路制动等待 100 ms 内累计绝对位移不超过 1 count 后关闭；具体实车停止与反向过程仍需确认。复位时保持双轮关闭。
+速度环左右轮 Kp 为 33、Ki 为 40，限幅均为 −800～800‰，斜坡 300 RPM/s，参数固定在 `wheel_speed.c`。零目标以短路制动等待 100 ms 内累计绝对位移不超过 1 count 后关闭；具体实车停止与反向过程仍需确认。复位时保持双轮关闭。
 
-反馈换算、真实转速、电机停止和速度闭环需上板验证，调参由用户进行。
+反馈换算、真实转速、电机停止和速度闭环需上板验证。

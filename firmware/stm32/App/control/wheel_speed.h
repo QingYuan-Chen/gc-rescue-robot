@@ -10,7 +10,6 @@ typedef struct
     float ki;
     float ramp_rpm_s;
     int16_t limit;
-    bool configured;
 } wheel_speed_config_t;
 
 typedef enum
@@ -42,8 +41,6 @@ typedef struct
 void wheel_speed_init(wheel_speed_t *wheel);
 /* dt_us 为有效的非零采样间隔。 */
 float wheel_speed_measure_rpm(int32_t delta_counts, uint32_t dt_us);
-bool wheel_speed_config_valid(const wheel_speed_config_t *config);
-bool wheel_speed_apply_config(wheel_speed_t *wheel, const wheel_speed_config_t *config);
 void wheel_speed_reset(wheel_speed_t *wheel);
 bool wheel_speed_step(wheel_speed_t *wheel, float target_rpm, float feedback_rpm,
                       int32_t delta_counts, uint32_t dt_us);

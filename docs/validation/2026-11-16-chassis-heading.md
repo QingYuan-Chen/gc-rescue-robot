@@ -11,6 +11,7 @@
 - `App/runtime/chassis.c/.h`：`vw`、`turn`、`straight` 状态机，时长、距离、IMU 失效和停车处理；直行时按线速度和起步时间冻结积分。
 - `App/runtime/wheel_io.c/.h`：底盘控制源与开环/速度调试互斥，`motor stop` 统一释放。
 - `App/debug/chassis_commands.c/.h`：`chassis vw/turn/straight/stop/get`、`turn set`、`hold set`、`hold get`。
+- `App/debug/speed_commands.c/.h`：只保留 `speed target/stop/get` 和 `vofa` 波形；速度环 PID 在线整定（`speed cfg/set/apply`）、参数暂存和速度事件队列已移除，PI 参数固定在 `wheel_speed.c`。
 - `vofa on chassis`、`vofa on turn` 两个波形视图。
 
 ## 几何与整定值
@@ -44,12 +45,14 @@ I += Ki·e·dt                条件满足时
 - 低速冻结：`|v_cmd| < 30 mm/s` 时不积分。
 - 起步冻结：`straight` 开始后 300 ms 内不积分。
 - 每次 `straight` 开始清零积分；积分按 °/s 存储，改 Ki 输出不跳变。
-- 转向环 `CHASSIS_TURN_KI=0` 且调用时关闭积分，行为与上一版一致。
+- 转向环默认 `ki=0` 且调用时关闭积分，行为与上一版一致。
 
 ## 构建
 
-- `stm32-debug`：FLASH 89,256 B / RAM_D1 27,256 B，BIN SHA256 `A42CA13BD85218597F84608666E8106BBF3D4DE764584656BC467C33962FB506`。
-- `stm32-release`：FLASH 95,944 B / RAM_D1 27,280 B，BIN SHA256 `70243F3C68071965DC53FF8861622C9AF0B17AE9BA8CCEC316EF9D8E724B4847`。
+- `stm32-debug`：FLASH 86,272 B / RAM_D1 26,472 B，BIN SHA256 `A5B1898FCF18A7A0668474C613664128762054742367BA5B5DFA37DE587F1CD9`。
+- `stm32-release`：FLASH 91,528 B / RAM_D1 26,504 B，BIN SHA256 `103096DE7779BA33B5F870524B312BD693BF65B800CBBD92395DD3AC4735DD96`。
+- 精简 `chassis_config.h`（只保留轮径、轮距和命令时长上下限 4 个共享宏，其余常量写在使用处）后重新构建，两个 BIN 的哈希与精简前一致，说明行为未变。
+- 移除速度环 PID 在线整定（`speed cfg/set/apply`、速度事件队列和参数暂存）后重新构建，FLASH 减少约 3 KB；`speed target/stop/get` 和 `vofa` 波形保留。
 
 ## 主机测试
 
@@ -60,7 +63,7 @@ MinGW GCC 15.2.0，`ctest` 6/6 通过，`-O0`/`-O2` 单独编译运行通过：
 - `heading_control_check`：输出方向、角加速度限制、阻尼、持续到位；积分分离、积分限幅、饱和时禁止同向积分、冻结与清零、改 Ki 输出连续、参数范围；制动曲线的切换点连续、对称、单调，以及带 150 ms 一阶滞后的航向仿真中 30°/40°/90°/180° 超调小于 2.5°，纯线性 P 的 180° 明显超调。
 - `chassis_check`：`vw` 声明与到期、饱和、转向/直行状态、直行起步 300 ms 与低速积分冻结、拒绝占用。
 - `chassis_commands_check`：命令解析、转向/直行、参数设置、`turn set brake` 的滑块与超限拒绝、`hold get`、转向环拒绝积分参数和非法输入。
-- `wheel_io_chassis_check`：底盘声明、与速度目标/开环互斥、停车释放。
+- `wheel_io_chassis_check`：底盘声明、与速度目标/开环互斥、停车释放、停车后切入闭环速度目标。
 
 ## 未验证项
 

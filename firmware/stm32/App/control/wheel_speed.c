@@ -20,33 +20,7 @@ void wheel_speed_init(wheel_speed_t *wheel)
 {
     *wheel = (wheel_speed_t){.config = {.kp = 33.0f, .ki = 40.0f,
                                         .limit = WHEEL_COMMAND_MAX_DUTY,
-                                        .ramp_rpm_s = 300.0f, .configured = true}};
-}
-
-bool wheel_speed_config_valid(const wheel_speed_config_t *config)
-{
-    return isfinite(config->kp) && isfinite(config->ki) && isfinite(config->ramp_rpm_s) &&
-           config->kp >= 0.0f && config->kp <= 1000.0f && config->ki >= 0.0f &&
-           config->ki <= 10000.0f && config->ramp_rpm_s >= 0.0f &&
-           config->ramp_rpm_s <= 10000.0f && config->limit >= 1 &&
-           config->limit <= WHEEL_COMMAND_MAX_DUTY;
-}
-
-bool wheel_speed_apply_config(wheel_speed_t *wheel, const wheel_speed_config_t *config)
-{
-    if (!wheel_speed_config_valid(config)) { return false; }
-    wheel->config = *config;
-    wheel->config.configured = true;
-    if (config->ki == 0.0f || wheel->phase != WHEEL_SPEED_TRACK)
-    {
-        wheel->integral = 0.0f;
-    }
-    else
-    {
-        wheel->integral = clamp((float)wheel->applied, -(float)config->limit,
-                                (float)config->limit) - config->kp * wheel->error_rpm;
-    }
-    return true;
+                                        .ramp_rpm_s = 300.0f}};
 }
 
 void wheel_speed_reset(wheel_speed_t *wheel)
@@ -58,7 +32,7 @@ void wheel_speed_reset(wheel_speed_t *wheel)
 bool wheel_speed_step(wheel_speed_t *wheel, float target_rpm, float feedback_rpm,
                       int32_t delta_counts, uint32_t dt_us)
 {
-    if (!wheel->config.configured || !isfinite(target_rpm) || !isfinite(feedback_rpm) ||
+    if (!isfinite(target_rpm) || !isfinite(feedback_rpm) ||
         target_rpm < WHEEL_TARGET_MIN_RPM || target_rpm > WHEEL_TARGET_MAX_RPM ||
         dt_us < 1000U || dt_us > 20000U) { return false; }
     const float dt = (float)dt_us * 0.000001f;
