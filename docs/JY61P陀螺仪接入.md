@@ -9,7 +9,7 @@ UART8 发送 `imu get` 查看状态：
 - `receiving` 为串口接收状态；`accel_frames`、`gyro_frames`、`angle_frames` 是各类有效帧计数；`checksum_errors` 和 `uart_errors` 是错误计数。
 - `accel_mg` 按 X、Y、Z 顺序输出毫 g；`gyro_mdeg_s` 输出毫度/秒；`angle_mdeg` 输出毫度。每类数据的 `age_ms` 表示距最近一帧的时间。
 - 每种数据收到有效帧后才显示。方向沿用传感器坐标；传感器安装轴与车体方向仍需实测。JY61P 的 Z 轴角度会随时间漂移。
-- `imu get` 末尾新增 `heading` 行，输出连续航向 `yaw_mdeg`、角速度 `rate_mdps`、数据年龄、帧周期、`valid` 和跳变标志。航向源位于 `App/runtime/heading.c`，安装轴和符号在 `App/config/chassis_config.h`。
+- `imu get` 末尾新增 `heading` 行，输出连续航向 `yaw_mdeg`、角速度 `rate_mdps`、数据年龄、帧周期、`valid` 和跳变标志。航向源位于 `App/runtime/heading.c`，安装轴、符号、失效超时和跳变门限都写在该文件的 `heading_update` 中。
 - 建议先把输出频率配置为 100 Hz。当前航向超时阈值为 50 ms，10 Hz 输出会持续判为无效。
 - 串口命令 `imu rate 100` 会通过 USART3 发送解锁、设置频率和保存三帧；支持 `0,1,2,5,10,20,50,100,200`。JY61P 的 RRATE 实测映射为 `0x08=50 Hz`、`0x09=100 Hz`。收到 `OK imu rate=... saved` 后直接用 `imu get` 确认 `period_ms≈10`。
 

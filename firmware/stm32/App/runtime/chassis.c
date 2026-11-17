@@ -26,34 +26,36 @@ static int64_t distance_start_left, distance_start_right;
 
 static chassis_turn_config_t default_turn_config(void)
 {
-    return (chassis_turn_config_t){.kp = CHASSIS_TURN_KP,
-                                   .kd = CHASSIS_TURN_KD,
-                                   .ki = CHASSIS_TURN_KI,
-                                   .filter_ms = CHASSIS_TURN_FILTER_MS,
-                                   .wmax_dps = CHASSIS_TURN_WMAX_DPS,
-                                   .accel_dps2 = CHASSIS_TURN_ACCEL_DPS2,
-                                   .tol_deg = CHASSIS_TURN_TOL_DEG,
-                                   .rate_tol_dps = CHASSIS_TURN_RATE_TOL_DPS,
-                                   .izone_deg = CHASSIS_TURN_IZONE_DEG,
-                                   .ilimit_dps = CHASSIS_TURN_ILIMIT_DPS,
-                                   .brake_dps2 = CHASSIS_TURN_BRAKE_DPS2,
-                                   .settle_ms = CHASSIS_TURN_SETTLE_MS};
+    /* 原地转向整定值：Kd 用 0，靠制动曲线避免超调；转向不使用积分。 */
+    return (chassis_turn_config_t){.kp = 3.0f,
+                                   .kd = 0.0f,
+                                   .ki = 0.0f,
+                                   .filter_ms = 20.0f,
+                                   .wmax_dps = 90.0f,
+                                   .accel_dps2 = 180.0f,
+                                   .tol_deg = 2.0f,
+                                   .rate_tol_dps = 5.0f,
+                                   .izone_deg = 5.0f,
+                                   .ilimit_dps = 0.0f,
+                                   .brake_dps2 = 100.0f,
+                                   .settle_ms = 100U};
 }
 
 static chassis_hold_config_t default_hold_config(void)
 {
-    return (chassis_hold_config_t){.kp = CHASSIS_HOLD_KP,
-                                   .kd = CHASSIS_HOLD_KD,
-                                   .ki = CHASSIS_HOLD_KI,
-                                   .filter_ms = CHASSIS_HOLD_FILTER_MS,
-                                   .wmax_dps = CHASSIS_HOLD_WMAX_DPS,
-                                   .accel_dps2 = CHASSIS_HOLD_ACCEL_DPS2,
-                                   .tol_deg = CHASSIS_HOLD_TOL_DEG,
-                                   .rate_tol_dps = CHASSIS_HOLD_RATE_TOL_DPS,
-                                   .izone_deg = CHASSIS_HOLD_IZONE_DEG,
-                                   .ilimit_dps = CHASSIS_HOLD_ILIMIT_DPS,
-                                   .brake_dps2 = CHASSIS_HOLD_BRAKE_DPS2,
-                                   .settle_ms = CHASSIS_HOLD_SETTLE_MS};
+    /* 直行保向整定值：D 项保留代码但取 0，用弱积分消除两轮速度差带来的稳态偏角。 */
+    return (chassis_hold_config_t){.kp = 1.0f,
+                                   .kd = 0.0f,
+                                   .ki = 0.1f,
+                                   .filter_ms = 20.0f,
+                                   .wmax_dps = 30.0f,
+                                   .accel_dps2 = 120.0f,
+                                   .tol_deg = 3.0f,
+                                   .rate_tol_dps = 10.0f,
+                                   .izone_deg = 5.0f,
+                                   .ilimit_dps = 5.0f,
+                                   .brake_dps2 = 0.0f,
+                                   .settle_ms = 100U};
 }
 
 static void finish(uint8_t reason)
@@ -119,8 +121,9 @@ void chassis_init(void)
 
 bool chassis_start_vw(float v_mm_s, float omega_deg_s, uint32_t duration_ms_arg)
 {
+    /* 命令上限：线速度 300 mm/s，差速角速度 120°/s。 */
     if (!isfinite(v_mm_s) || !isfinite(omega_deg_s) ||
-        fabsf(v_mm_s) > CHASSIS_MAX_V_MM_S || fabsf(omega_deg_s) > CHASSIS_MAX_OMEGA_DEG_S ||
+        fabsf(v_mm_s) > 300.0f || fabsf(omega_deg_s) > 120.0f ||
         duration_ms_arg < CHASSIS_COMMAND_MIN_MS ||
         duration_ms_arg > CHASSIS_COMMAND_MAX_MS)
     {
@@ -142,8 +145,9 @@ bool chassis_start_vw(float v_mm_s, float omega_deg_s, uint32_t duration_ms_arg)
 
 bool chassis_start_turn(float relative_deg)
 {
+    /* 转向角度上限 360°。 */
     if (!isfinite(relative_deg) || fabsf(relative_deg) < 0.1f ||
-        fabsf(relative_deg) > CHASSIS_TURN_MAX_DEG)
+        fabsf(relative_deg) > 360.0f)
     {
         return false;
     }
@@ -162,7 +166,7 @@ bool chassis_start_turn(float relative_deg)
         return false;
     }
     started_ms = last_update_ms = osKernelGetTickCount();
-    duration_ms = CHASSIS_TURN_TIMEOUT_MS;
+    duration_ms = 5000U; /* 转向超时 5 s。 */
     status.remaining_ms = duration_ms;
     update_turn_status(&heading, 0.0f);
     return true;
@@ -170,10 +174,11 @@ bool chassis_start_turn(float relative_deg)
 
 bool chassis_start_straight(float v_mm_s, uint32_t duration_ms_arg, float distance_mm)
 {
-    if (!isfinite(v_mm_s) || fabsf(v_mm_s) > CHASSIS_MAX_V_MM_S ||
+    /* 直行线速度上限 300 mm/s，可选里程上限 10000 mm。 */
+    if (!isfinite(v_mm_s) || fabsf(v_mm_s) > 300.0f ||
         duration_ms_arg < CHASSIS_COMMAND_MIN_MS ||
         duration_ms_arg > CHASSIS_COMMAND_MAX_MS || !isfinite(distance_mm) ||
-        distance_mm < 0.0f || distance_mm > CHASSIS_MAX_DISTANCE_MM)
+        distance_mm < 0.0f || distance_mm > 10000.0f)
     {
         return false;
     }
@@ -228,7 +233,8 @@ void chassis_step(uint32_t now_ms)
         return;
     }
     status.remaining_ms = duration_ms - elapsed;
-    if (now_ms - last_update_ms < CHASSIS_PERIOD_MS) { return; }
+    /* 底盘控制周期 20 ms。 */
+    if (now_ms - last_update_ms < 20U) { return; }
     last_update_ms = now_ms;
 
     if (status.mode == CHASSIS_VW)
@@ -271,11 +277,13 @@ void chassis_step(uint32_t now_ms)
                 finish(1U);
                 return;
             }
-            const float allowed = sqrtf(2.0f * CHASSIS_STRAIGHT_ACCEL_MM_S2 * remaining);
+            /* 带里程时按 300 mm/s² 提前减速。 */
+            const float allowed = sqrtf(2.0f * 300.0f * remaining);
             if (fabsf(v_cmd) > allowed) { v_cmd = v_cmd > 0.0f ? allowed : -allowed; }
         }
-        const bool integral_allowed = fabsf(v_cmd) >= CHASSIS_HOLD_I_MIN_V_MM_S &&
-                                      (now_ms - started_ms) >= CHASSIS_HOLD_I_DELAY_MS;
+        /* 起步 300 ms 内、或线速度低于 30 mm/s 时冻结积分。 */
+        const bool integral_allowed = fabsf(v_cmd) >= 30.0f &&
+                                      (now_ms - started_ms) >= 300U;
         const float omega = heading_control_step(&hold_control, &hold_config, heading.yaw_rad,
                                                  heading.yaw_rate_rad_s, integral_allowed,
                                                  now_ms);
