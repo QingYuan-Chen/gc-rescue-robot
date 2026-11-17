@@ -77,6 +77,7 @@ static bool set_heading_parameter(const char *name, const char *text,
     else if (strcmp(name, "accel") == 0) { config->accel_dps2 = value; }
     else if (strcmp(name, "tol") == 0) { config->tol_deg = value; }
     else if (strcmp(name, "rate_tol") == 0) { config->rate_tol_dps = value; }
+    else if (strcmp(name, "brake") == 0) { config->brake_dps2 = value; }
     else if (allow_integral && strcmp(name, "ki") == 0) { config->ki = value; }
     else if (allow_integral && strcmp(name, "izone") == 0) { config->izone_deg = value; }
     else if (allow_integral && strcmp(name, "ilimit") == 0) { config->ilimit_dps = value; }
@@ -90,11 +91,12 @@ static void report_hold(char *response, size_t capacity)
     chassis_get_hold_config(&config);
     snprintf(response, capacity,
              "OK hold kp_m=%ld kd_m=%ld ki_m=%ld filter_mms=%ld wmax_mdps=%ld "
-             "accel_mdps2=%ld tol_mdeg=%ld rate_tol_mdps=%ld izone_mdeg=%ld "
-             "ilimit_mdps=%ld settle_ms=%lu\r\n",
+             "accel_mdps2=%ld brake_mdps2=%ld tol_mdeg=%ld rate_tol_mdps=%ld "
+             "izone_mdeg=%ld ilimit_mdps=%ld settle_ms=%lu\r\n",
              (long)(config.kp * 1000.0f), (long)(config.kd * 1000.0f),
              (long)(config.ki * 1000.0f), (long)(config.filter_ms * 1000.0f),
              (long)(config.wmax_dps * 1000.0f), (long)(config.accel_dps2 * 1000.0f),
+             (long)(config.brake_dps2 * 1000.0f),
              (long)(config.tol_deg * 1000.0f), (long)(config.rate_tol_dps * 1000.0f),
              (long)(config.izone_deg * 1000.0f), (long)(config.ilimit_dps * 1000.0f),
              (unsigned long)config.settle_ms);
@@ -115,12 +117,13 @@ bool chassis_commands_execute(char *line, char *response, size_t capacity)
         static const char *const sliders[] = {
             "chassis turn", "turn set kp", "turn set kd", "turn set filter",
             "turn set wmax", "turn set accel", "turn set tol", "turn set rate_tol",
-            "turn set settle", "hold set kp", "hold set kd", "hold set filter",
-            "hold set wmax", "hold set accel", "hold set tol", "hold set rate_tol",
-            "hold set settle", "hold set ki", "hold set izone", "hold set ilimit",
-            "chassis turn set kp", "chassis turn set kd",
+            "turn set settle", "turn set brake", "hold set kp", "hold set kd",
+            "hold set filter", "hold set wmax", "hold set accel", "hold set tol",
+            "hold set rate_tol", "hold set settle", "hold set ki", "hold set izone",
+            "hold set ilimit", "chassis turn set kp", "chassis turn set kd",
             "chassis turn set filter", "chassis turn set wmax", "chassis turn set accel",
             "chassis turn set tol", "chassis turn set rate_tol", "chassis turn set settle",
+            "chassis turn set brake",
             "chassis hold set kp", "chassis hold set kd", "chassis hold set filter",
             "chassis hold set wmax", "chassis hold set accel", "chassis hold set tol",
             "chassis hold set rate_tol", "chassis hold set settle",

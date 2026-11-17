@@ -16,6 +16,7 @@ typedef struct
     float rate_tol_dps;
     float izone_deg;
     float ilimit_dps;
+    float brake_dps2;
     uint32_t settle_ms;
 } heading_control_config_t;
 

@@ -7,7 +7,7 @@
 - `App/runtime/heading.c/.h`：角度帧展开为连续航向，陀螺角速度，数据年龄、帧周期、跳变和超时判断。
 - `imu rate <hz>`：通过 USART3 发送维特智能解锁、输出频率和保存命令。
 - `App/control/chassis_kinematics.c/.h`：`v/ω` 到左右轮 RPM，转向优先饱和。
-- `App/control/heading_control.c/.h`：角度 P、陀螺角速度阻尼、可选积分（积分分离、条件积分、限幅）、限幅、角加速度限制和持续到位判据。
+- `App/control/heading_control.c/.h`：角度 P（小偏差线性、大偏差制动曲线）、陀螺角速度阻尼、可选积分（积分分离、条件积分、限幅）、限幅、角加速度限制和持续到位判据。
 - `App/runtime/chassis.c/.h`：`vw`、`turn`、`straight` 状态机，时长、距离、IMU 失效和停车处理；直行时按线速度和起步时间冻结积分。
 - `App/runtime/wheel_io.c/.h`：底盘控制源与开环/速度调试互斥，`motor stop` 统一释放。
 - `App/debug/chassis_commands.c/.h`：`chassis vw/turn/straight/stop/get`、`turn set`、`hold set`、`hold get`。
@@ -15,7 +15,19 @@
 
 ## 几何与整定值
 
-轮径 65 mm、轮距 220 mm、1980 counts/转。速度上限 300 mm/s；转向 Kp 3.0、Kd 0.22、ω_max 90°/s、α 180°/s²、容差 2° / 5°/s；保向 Kp 1.0、Kd 0.00、Ki 0.10、积分区间 5°、积分限幅 5°/s、ω 限幅 30°/s。参数为当前整定值，仍需负载和重复性复核。
+轮径 65 mm、轮距 220 mm、1980 counts/转。速度上限 300 mm/s；转向 Kp 3.0、Kd 0.00、制动减速度 100°/s²、ω_max 90°/s、α 180°/s²、容差 2° / 5°/s；保向 Kp 1.0、Kd 0.00、Ki 0.10、积分区间 5°、积分限幅 5°/s、ω 限幅 30°/s。参数为当前整定值，仍需负载和重复性复核。
+
+## 转向制动曲线
+
+实测大角度转向需要 Kd、小角度（小于 40°）反而要释放 D：纯线性 P 在近目标段要求减速度 `Kp·ω`，超过 `accel` 后无法及时减速。改为两段曲线：
+
+```text
+e1 = brake / Kp²
+|e| ≤ e1：  ω_p = Kp·e
+|e| > e1：  ω_p = sign(e)·√(2·brake·(|e| − e1/2))
+```
+
+两段在 `e1` 处值与斜率连续；线性段减速度不超过 `brake`，制动段恒为 `brake`。`brake ≤ accel` 时减速不受角加速度限制，所有角度共用一套参数，`Kd` 可以取 0。`brake = 0` 退回线性 P，直行保向使用该模式。
 
 ## 直行保向积分
 
@@ -36,8 +48,8 @@ I += Ki·e·dt                条件满足时
 
 ## 构建
 
-- `stm32-debug`：FLASH 88,984 B / RAM_D1 27,248 B，BIN SHA256 `E310709EE056CFD9E7C247D13BC397382F130346FA73B06B6659A30F6F52334A`。
-- `stm32-release`：FLASH 95,600 B / RAM_D1 27,272 B，BIN SHA256 `27D4E8D91317FAF04837203067FE0828F6AB709ACD0B6997ACF2A5B537585FD6`。
+- `stm32-debug`：FLASH 89,256 B / RAM_D1 27,256 B，BIN SHA256 `A42CA13BD85218597F84608666E8106BBF3D4DE764584656BC467C33962FB506`。
+- `stm32-release`：FLASH 95,944 B / RAM_D1 27,280 B，BIN SHA256 `70243F3C68071965DC53FF8861622C9AF0B17AE9BA8CCEC316EF9D8E724B4847`。
 
 ## 主机测试
 
@@ -45,9 +57,9 @@ MinGW GCC 15.2.0，`ctest` 6/6 通过，`-O0`/`-O2` 单独编译运行通过：
 
 - `heading_check`：连续航向、跨 ±180°、跳变和超时。
 - `kinematics_check`：正负速度/角速度、转向饱和和输入校验。
-- `heading_control_check`：输出方向、角加速度限制、阻尼、持续到位；积分分离、积分限幅、饱和时禁止同向积分、冻结与清零、改 Ki 输出连续、参数范围。
+- `heading_control_check`：输出方向、角加速度限制、阻尼、持续到位；积分分离、积分限幅、饱和时禁止同向积分、冻结与清零、改 Ki 输出连续、参数范围；制动曲线的切换点连续、对称、单调，以及带 150 ms 一阶滞后的航向仿真中 30°/40°/90°/180° 超调小于 2.5°，纯线性 P 的 180° 明显超调。
 - `chassis_check`：`vw` 声明与到期、饱和、转向/直行状态、直行起步 300 ms 与低速积分冻结、拒绝占用。
-- `chassis_commands_check`：命令解析、转向/直行、参数设置、`hold get`、转向环拒绝积分参数和非法输入。
+- `chassis_commands_check`：命令解析、转向/直行、参数设置、`turn set brake` 的滑块与超限拒绝、`hold get`、转向环拒绝积分参数和非法输入。
 - `wheel_io_chassis_check`：底盘声明、与速度目标/开环互斥、停车释放。
 
 ## 未验证项
@@ -56,6 +68,7 @@ MinGW GCC 15.2.0，`ctest` 6/6 通过，`-O0`/`-O2` 单独编译运行通过：
 
 - JY61P 实际帧率、安装轴和符号；需先配置 100 Hz。
 - 架空转向方向和轮速；落地差速比例、轮径/轮距标定。
-- 转向 Kp/Kd、保向增益、容差和超时。
+- 转向 Kp/Kd、制动减速度 brake、保向增益、容差和超时。
+- 转向制动曲线在真实速度环滞后下的超调；`brake` 实测 100°/s² 效果最佳，再按 30°/40°/90°/180° 的超调调整。
 - 直行保向 Ki / izone / ilimit：稳态偏角是否收敛、有无低频摆动、`i_mdps` 是否长期顶在限幅。
 - IMU 断流/跳变时停车，以及 `motor stop` 的实际响应。

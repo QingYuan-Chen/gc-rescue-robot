@@ -36,6 +36,7 @@ static chassis_turn_config_t default_turn_config(void)
                                    .rate_tol_dps = CHASSIS_TURN_RATE_TOL_DPS,
                                    .izone_deg = CHASSIS_TURN_IZONE_DEG,
                                    .ilimit_dps = CHASSIS_TURN_ILIMIT_DPS,
+                                   .brake_dps2 = CHASSIS_TURN_BRAKE_DPS2,
                                    .settle_ms = CHASSIS_TURN_SETTLE_MS};
 }
 
@@ -51,6 +52,7 @@ static chassis_hold_config_t default_hold_config(void)
                                    .rate_tol_dps = CHASSIS_HOLD_RATE_TOL_DPS,
                                    .izone_deg = CHASSIS_HOLD_IZONE_DEG,
                                    .ilimit_dps = CHASSIS_HOLD_ILIMIT_DPS,
+                                   .brake_dps2 = CHASSIS_HOLD_BRAKE_DPS2,
                                    .settle_ms = CHASSIS_HOLD_SETTLE_MS};
 }
 

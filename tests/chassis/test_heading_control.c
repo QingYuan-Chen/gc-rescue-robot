@@ -18,6 +18,7 @@ static heading_control_config_t config(void)
                                       .rate_tol_dps = 5.0f,
                                       .izone_deg = 5.0f,
                                       .ilimit_dps = 5.0f,
+                                      .brake_dps2 = 0.0f,
                                       .settle_ms = 100U};
 }
 
@@ -34,7 +35,42 @@ static heading_control_config_t integral_config(void)
                                       .rate_tol_dps = 0.1f,
                                       .izone_deg = 45.0f,
                                       .ilimit_dps = 5.0f,
+                                      .brake_dps2 = 0.0f,
                                       .settle_ms = 100U};
+}
+
+static heading_control_config_t brake_config(void)
+{
+    /* 转向默认参数：Kp 3、brake 100、Kd 0。 */
+    return (heading_control_config_t){.kp = 3.0f,
+                                      .kd = 0.0f,
+                                      .ki = 0.0f,
+                                      .filter_ms = 20.0f,
+                                      .wmax_dps = 90.0f,
+                                      .accel_dps2 = 180.0f,
+                                      .tol_deg = 2.0f,
+                                      .rate_tol_dps = 5.0f,
+                                      .izone_deg = 5.0f,
+                                      .ilimit_dps = 0.0f,
+                                      .brake_dps2 = 100.0f,
+                                      .settle_ms = 100U};
+}
+
+/* 固定航向偏差下，反复调用直到角速度命令稳定，返回稳态输出。 */
+static float steady_output(const heading_control_config_t *cfg, float error_deg)
+{
+    heading_control_t control;
+    heading_control_init(&control);
+    uint32_t now = 0U;
+    heading_control_start(&control, 0.0f, now);
+    float omega = 0.0f;
+    for (unsigned i = 0U; i < 20U; i++)
+    {
+        now += 20U;
+        omega = heading_control_step(&control, cfg, -error_deg * DEG_TO_RAD, 0.0f, false,
+                                     now);
+    }
+    return omega;
 }
 
 static void test_basic(void)
@@ -203,6 +239,113 @@ static void test_config_range(void)
     bad = config();
     bad.ilimit_dps = 60.0f;
     assert(!heading_control_config_valid(&bad));
+    bad = config();
+    bad.brake_dps2 = -1.0f;
+    assert(!heading_control_config_valid(&bad));
+    bad = config();
+    bad.brake_dps2 = config().accel_dps2 + 1.0f;
+    assert(!heading_control_config_valid(&bad));
+    bad = config();
+    bad.brake_dps2 = bad.accel_dps2;
+    assert(heading_control_config_valid(&bad));
+}
+
+static void test_brake_curve(void)
+{
+    heading_control_config_t cfg = brake_config();
+    /* 放开限幅，直接观察位置项输出。 */
+    cfg.wmax_dps = 200.0f;
+    cfg.accel_dps2 = 1000.0f;
+    assert(heading_control_config_valid(&cfg));
+
+    /* 切换点 e1 = brake/Kp²；两段值与斜率连续。 */
+    const float e1 = cfg.brake_dps2 / (cfg.kp * cfg.kp);
+    const float below = steady_output(&cfg, e1 - 0.001f);
+    const float at = steady_output(&cfg, e1);
+    const float above = steady_output(&cfg, e1 + 0.001f);
+    assert(fabsf(at - cfg.kp * e1) < 0.05f);
+    assert(fabsf(above - at) < 0.05f);
+    assert(above > at && at > below);
+
+    /* 大偏差走制动段：比线性 P 更早减速，且符合 sqrt 曲线。 */
+    const float far_brake = steady_output(&cfg, 60.0f);
+    heading_control_config_t linear = cfg;
+    linear.brake_dps2 = 0.0f;
+    const float far_linear = steady_output(&linear, 60.0f);
+    assert(far_brake < far_linear);
+    assert(fabsf(far_brake - sqrtf(2.0f * cfg.brake_dps2 * (60.0f - 0.5f * e1))) < 0.05f);
+
+    /* 负偏差对称。 */
+    heading_control_t control;
+    heading_control_init(&control);
+    uint32_t now = 0U;
+    heading_control_start(&control, 0.0f, now);
+    float omega = 0.0f;
+    for (unsigned i = 0U; i < 20U; i++)
+    {
+        now += 20U;
+        omega = heading_control_step(&control, &cfg, 60.0f * DEG_TO_RAD, 0.0f, false, now);
+    }
+    assert(fabsf(omega + far_brake) < 0.05f);
+}
+
+typedef struct
+{
+    float overshoot_deg;
+    uint32_t settle_ms;
+    bool settled;
+} motion_result_t;
+
+/* 简化闭环：角速度命令经一阶滞后驱动航向，用于区分制动曲线与纯线性 P。 */
+static motion_result_t simulate_turn(const heading_control_config_t *cfg, float target_deg)
+{
+    heading_control_t control;
+    heading_control_init(&control);
+    uint32_t now = 0U;
+    heading_control_start(&control, target_deg * DEG_TO_RAD, now);
+    float yaw_deg = 0.0f;
+    float rate_dps = 0.0f;
+    motion_result_t result = {0};
+
+    for (unsigned i = 0U; i < 400U; i++)
+    {
+        now += 20U;
+        const float omega = heading_control_step(&control, cfg, yaw_deg * DEG_TO_RAD,
+                                                 rate_dps * DEG_TO_RAD, false, now);
+        /* 速度环等效一阶滞后 150 ms，覆盖采样、滤波和电机响应。 */
+        rate_dps += (omega - rate_dps) * (20.0f / 170.0f);
+        yaw_deg += rate_dps * 0.02f;
+        const float overshoot = yaw_deg - target_deg;
+        if (overshoot > result.overshoot_deg) { result.overshoot_deg = overshoot; }
+        if (control.settled)
+        {
+            result.settled = true;
+            result.settle_ms = now;
+            break;
+        }
+    }
+    return result;
+}
+
+static void test_brake_motion(void)
+{
+    const heading_control_config_t cfg = brake_config();
+    const float angles[] = {30.0f, 40.0f, 90.0f, 180.0f};
+    for (unsigned i = 0U; i < sizeof(angles) / sizeof(angles[0]); i++)
+    {
+        const motion_result_t result = simulate_turn(&cfg, angles[i]);
+        assert(result.settled);
+        assert(result.overshoot_deg < 2.5f);
+        assert(result.settle_ms <= 5000U);
+    }
+
+    /* 同一被控对象，纯线性 P（无 D、无制动曲线）在 180° 会明显超调。 */
+    heading_control_config_t linear = cfg;
+    linear.brake_dps2 = 0.0f;
+    const motion_result_t linear_result = simulate_turn(&linear, 180.0f);
+    const motion_result_t brake_result = simulate_turn(&cfg, 180.0f);
+    assert(linear_result.overshoot_deg > 3.5f);
+    assert(brake_result.overshoot_deg < 0.5f * linear_result.overshoot_deg);
 }
 
 int main(void)
@@ -214,6 +357,8 @@ int main(void)
     test_integral_freeze_and_reset();
     test_integral_ki_change_continuous();
     test_config_range();
-    puts("PASS: heading control limits, damping, settle and integral");
+    test_brake_curve();
+    test_brake_motion();
+    puts("PASS: heading control limits, damping, settle, integral and brake curve");
     return 0;
 }

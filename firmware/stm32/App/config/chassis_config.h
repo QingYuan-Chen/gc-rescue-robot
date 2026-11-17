@@ -14,7 +14,7 @@
 
 /* 原地转向和直行保向初值；VOFA 在线修改，上板整定。转向环不使用积分。 */
 #define CHASSIS_TURN_KP 3.0f
-#define CHASSIS_TURN_KD 0.22f
+#define CHASSIS_TURN_KD 0.0f
 #define CHASSIS_TURN_KI 0.0f
 #define CHASSIS_TURN_FILTER_MS 20.0f
 #define CHASSIS_TURN_WMAX_DPS 90.0f
@@ -23,6 +23,8 @@
 #define CHASSIS_TURN_RATE_TOL_DPS 5.0f
 #define CHASSIS_TURN_IZONE_DEG 5.0f
 #define CHASSIS_TURN_ILIMIT_DPS 0.0f
+/* 大角度转向的制动减速度；0 表示关闭，退回线性 P。必须不大于 ACCEL。 */
+#define CHASSIS_TURN_BRAKE_DPS2 100.0f
 #define CHASSIS_TURN_SETTLE_MS 100U
 #define CHASSIS_TURN_TIMEOUT_MS 5000U
 #define CHASSIS_TURN_MAX_DEG 360.0f
@@ -38,6 +40,8 @@
 #define CHASSIS_HOLD_RATE_TOL_DPS 10.0f
 #define CHASSIS_HOLD_IZONE_DEG 5.0f
 #define CHASSIS_HOLD_ILIMIT_DPS 5.0f
+/* 直行不用制动曲线，保持线性 P 加弱积分。 */
+#define CHASSIS_HOLD_BRAKE_DPS2 0.0f
 #define CHASSIS_HOLD_SETTLE_MS 100U
 /* 低速冻结：起步加速阶段和末端减速阶段不积分。 */
 #define CHASSIS_HOLD_I_MIN_V_MM_S 30.0f

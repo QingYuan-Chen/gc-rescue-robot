@@ -52,6 +52,15 @@ int main(void)
     command(target_slider, "OK chassis mode=2");
     char hold_set[] = "hold set kd 0.1";
     command(hold_set, "OK hold set kd=0.1");
+    char turn_brake_slider[] = "turn set brake:144";
+    command(turn_brake_slider, "OK turn set brake=144");
+    /* 制动减速度不能超过角加速度限制。 */
+    {
+        char turn_brake_big[] = "turn set brake 200";
+        char response[1024];
+        assert(chassis_commands_execute(turn_brake_big, response, sizeof(response)));
+        assert(strstr(response, "ERR turn parameter or range") != NULL);
+    }
     char hold_ki_slider[] = "hold set ki:0.1";
     command(hold_ki_slider, "OK hold set ki=0.1");
     char hold_izone[] = "hold set izone 5";

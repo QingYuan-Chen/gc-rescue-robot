@@ -14,6 +14,22 @@ static float clampf(float value, float low, float high)
     return value;
 }
 
+/* 位置项：小偏差用线性 Kp·e，大偏差用减速度不超过 brake 的制动曲线。 */
+static float position_command_dps(const heading_control_config_t *config, float error_deg)
+{
+    if (config->brake_dps2 <= 0.0f || config->kp <= 0.0f)
+    {
+        return config->kp * error_deg;
+    }
+    /* 两段在 |e| = e1 处值和斜率连续：e1 = brake/Kp²，e0 = e1/2。 */
+    const float e1 = config->brake_dps2 / (config->kp * config->kp);
+    const float magnitude = fabsf(error_deg);
+    if (magnitude <= e1) { return config->kp * error_deg; }
+    const float brake_command =
+        sqrtf(2.0f * config->brake_dps2 * (magnitude - 0.5f * e1));
+    return error_deg < 0.0f ? -brake_command : brake_command;
+}
+
 void heading_control_init(heading_control_t *control)
 {
     *control = (heading_control_t){0};
@@ -35,7 +51,8 @@ bool heading_control_config_valid(const heading_control_config_t *config)
            config->tol_deg <= 20.0f && config->rate_tol_dps >= 0.1f &&
            config->rate_tol_dps <= 50.0f && config->izone_deg >= 0.1f &&
            config->izone_deg <= 45.0f && config->ilimit_dps >= 0.0f &&
-           config->ilimit_dps <= 50.0f && config->settle_ms >= 10U &&
+           config->ilimit_dps <= 50.0f && config->brake_dps2 >= 0.0f &&
+           config->brake_dps2 <= config->accel_dps2 && config->settle_ms >= 10U &&
            config->settle_ms <= 1000U;
 }
 
@@ -68,7 +85,7 @@ float heading_control_step(heading_control_t *control, const heading_control_con
     control->filtered_rate_dps =
         alpha * control->filtered_rate_dps + (1.0f - alpha) * rate_dps;
 
-    const float p_dps = config->kp * error_deg;
+    const float p_dps = position_command_dps(config, error_deg);
     const float d_dps = config->kd * control->filtered_rate_dps;
     float unsaturated = p_dps + control->integral_dps - d_dps;
 
