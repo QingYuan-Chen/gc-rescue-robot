@@ -191,7 +191,7 @@ static void execute_line(char *line)
                    "speed cfg/set/apply/target/stop/get | "
                    "chassis vw <v_mm_s> <w_deg_s> <ms> | chassis turn <deg> | "
                    "chassis straight <v_mm_s> <ms> [mm] | chassis stop/get | "
-                   "turn set/hold set <param> <value> | "
+                   "turn set/hold set <param> <value> | hold get | "
                    "vofa on left/right/both/chassis/turn | vofa off | "
                    "vofa period 20/50/100 | imu get | imu rate <0,1,2,5,10,20,50,100,200>\r\n");
     }

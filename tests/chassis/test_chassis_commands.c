@@ -52,6 +52,21 @@ int main(void)
     command(target_slider, "OK chassis mode=2");
     char hold_set[] = "hold set kd 0.1";
     command(hold_set, "OK hold set kd=0.1");
+    char hold_ki_slider[] = "hold set ki:0.1";
+    command(hold_ki_slider, "OK hold set ki=0.1");
+    char hold_izone[] = "hold set izone 5";
+    command(hold_izone, "OK hold set izone=5");
+    char hold_ilimit_slider[] = "hold set ilimit:5";
+    command(hold_ilimit_slider, "OK hold set ilimit=5");
+    char hold_get[] = "hold get";
+    command(hold_get, "OK hold kp_m=1000 kd_m=100 ki_m=100");
+    /* 转向环不开放积分参数。 */
+    {
+        char turn_ki[] = "turn set ki 0.1";
+        char response[1024];
+        assert(chassis_commands_execute(turn_ki, response, sizeof(response)));
+        assert(strstr(response, "ERR turn parameter or range") != NULL);
+    }
     char straight[] = "chassis straight 100 200 500";
     command(straight, "OK chassis mode=3");
     char stop[] = "chassis stop";

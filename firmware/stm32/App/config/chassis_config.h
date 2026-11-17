@@ -12,26 +12,36 @@
 #define CHASSIS_MAX_DISTANCE_MM 10000.0f
 #define CHASSIS_STRAIGHT_ACCEL_MM_S2 300.0f
 
-/* 原地转向和直行保向当前整定值；仍可在 VOFA 在线修改。 */
+/* 原地转向和直行保向初值；VOFA 在线修改，上板整定。转向环不使用积分。 */
 #define CHASSIS_TURN_KP 3.0f
 #define CHASSIS_TURN_KD 0.22f
+#define CHASSIS_TURN_KI 0.0f
 #define CHASSIS_TURN_FILTER_MS 20.0f
 #define CHASSIS_TURN_WMAX_DPS 90.0f
 #define CHASSIS_TURN_ACCEL_DPS2 180.0f
 #define CHASSIS_TURN_TOL_DEG 2.0f
 #define CHASSIS_TURN_RATE_TOL_DPS 5.0f
+#define CHASSIS_TURN_IZONE_DEG 5.0f
+#define CHASSIS_TURN_ILIMIT_DPS 0.0f
 #define CHASSIS_TURN_SETTLE_MS 100U
 #define CHASSIS_TURN_TIMEOUT_MS 5000U
 #define CHASSIS_TURN_MAX_DEG 360.0f
 
+/* 直行保向用弱积分消除两轮速度差带来的稳态偏角；D 项保留代码，当前为 0。 */
 #define CHASSIS_HOLD_KP 1.0f
 #define CHASSIS_HOLD_KD 0.00f
+#define CHASSIS_HOLD_KI 0.10f
 #define CHASSIS_HOLD_FILTER_MS 20.0f
 #define CHASSIS_HOLD_WMAX_DPS 30.0f
 #define CHASSIS_HOLD_ACCEL_DPS2 120.0f
 #define CHASSIS_HOLD_TOL_DEG 3.0f
 #define CHASSIS_HOLD_RATE_TOL_DPS 10.0f
+#define CHASSIS_HOLD_IZONE_DEG 5.0f
+#define CHASSIS_HOLD_ILIMIT_DPS 5.0f
 #define CHASSIS_HOLD_SETTLE_MS 100U
+/* 低速冻结：起步加速阶段和末端减速阶段不积分。 */
+#define CHASSIS_HOLD_I_MIN_V_MM_S 30.0f
+#define CHASSIS_HOLD_I_DELAY_MS 300U
 
 /* JY61P 安装轴：默认 Z 轴为航向轴，符号可在上板核对后修改。 */
 #define CHASSIS_IMU_YAW_AXIS 2U

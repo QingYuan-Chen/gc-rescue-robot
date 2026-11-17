@@ -88,6 +88,36 @@ int main(void)
     chassis_stop();
     assert(!claimed);
 
+    /* 直行保向：起步 300 ms 内冻结积分，之后偏差进入积分。 */
+    tick = 500U;
+    heading.yaw_rad = 0.0f;
+    heading.yaw_rate_rad_s = 0.0f;
+    assert(chassis_start_straight(100.0f, 2000U, 0.0f));
+    heading.yaw_rad = -0.0174533f; /* 偏 1°，误差进入积分区间 */
+    tick = 600U;
+    chassis_step(tick);
+    chassis_get_status(&status);
+    assert(status.mode == CHASSIS_STRAIGHT);
+    assert(status.i_dps == 0.0f);
+
+    tick = 820U;
+    chassis_step(tick);
+    chassis_get_status(&status);
+    assert(status.i_dps > 0.0f);
+    chassis_stop();
+
+    /* 线速度低于 30 mm/s 时冻结积分。 */
+    tick = 900U;
+    heading.yaw_rad = 0.0f;
+    assert(chassis_start_straight(20.0f, 2000U, 0.0f));
+    heading.yaw_rad = -0.0174533f;
+    tick = 1300U;
+    chassis_step(tick);
+    chassis_get_status(&status);
+    assert(status.mode == CHASSIS_STRAIGHT);
+    assert(status.i_dps == 0.0f);
+    chassis_stop();
+
     busy = true;
     assert(!chassis_start_vw(100.0f, 0.0f, 100U));
     assert(!chassis_start_vw(500.0f, 0.0f, 100U));

@@ -22,16 +22,20 @@ void heading_control_init(heading_control_t *control)
 bool heading_control_config_valid(const heading_control_config_t *config)
 {
     if (config == NULL) { return false; }
-    return isfinite(config->kp) && isfinite(config->kd) && isfinite(config->filter_ms) &&
-           isfinite(config->wmax_dps) && isfinite(config->accel_dps2) &&
-           isfinite(config->tol_deg) && isfinite(config->rate_tol_dps) &&
-           config->kp >= 0.0f && config->kp <= 20.0f && config->kd >= 0.0f &&
-           config->kd <= 5.0f && config->filter_ms >= 0.0f &&
+    return isfinite(config->kp) && isfinite(config->kd) && isfinite(config->ki) &&
+           isfinite(config->filter_ms) && isfinite(config->wmax_dps) &&
+           isfinite(config->accel_dps2) && isfinite(config->tol_deg) &&
+           isfinite(config->rate_tol_dps) && isfinite(config->izone_deg) &&
+           isfinite(config->ilimit_dps) && config->kp >= 0.0f && config->kp <= 20.0f &&
+           config->kd >= 0.0f && config->kd <= 5.0f && config->ki >= 0.0f &&
+           config->ki <= 2.0f && config->filter_ms >= 0.0f &&
            config->filter_ms <= 200.0f && config->wmax_dps >= 1.0f &&
            config->wmax_dps <= 200.0f && config->accel_dps2 >= 10.0f &&
            config->accel_dps2 <= 1000.0f && config->tol_deg >= 0.1f &&
            config->tol_deg <= 20.0f && config->rate_tol_dps >= 0.1f &&
-           config->rate_tol_dps <= 50.0f && config->settle_ms >= 10U &&
+           config->rate_tol_dps <= 50.0f && config->izone_deg >= 0.1f &&
+           config->izone_deg <= 45.0f && config->ilimit_dps >= 0.0f &&
+           config->ilimit_dps <= 50.0f && config->settle_ms >= 10U &&
            config->settle_ms <= 1000U;
 }
 
@@ -40,6 +44,7 @@ void heading_control_start(heading_control_t *control, float target_rad, uint32_
     control->target_rad = target_rad;
     control->last_omega_dps = 0.0f;
     control->filtered_rate_dps = 0.0f;
+    control->integral_dps = 0.0f;
     control->last_ms = now_ms;
     control->settle_start_ms = 0U;
     control->started = true;
@@ -47,7 +52,8 @@ void heading_control_start(heading_control_t *control, float target_rad, uint32_
 }
 
 float heading_control_step(heading_control_t *control, const heading_control_config_t *config,
-                           float yaw_rad, float yaw_rate_rad_s, uint32_t now_ms)
+                           float yaw_rad, float yaw_rate_rad_s, bool allow_integral,
+                           uint32_t now_ms)
 {
     if (!control->started) { return 0.0f; }
     const float dt_ms = clampf((float)(now_ms - control->last_ms),
@@ -62,8 +68,23 @@ float heading_control_step(heading_control_t *control, const heading_control_con
     control->filtered_rate_dps =
         alpha * control->filtered_rate_dps + (1.0f - alpha) * rate_dps;
 
-    float omega = config->kp * error_deg - config->kd * control->filtered_rate_dps;
-    omega = clampf(omega, -config->wmax_dps, config->wmax_dps);
+    const float p_dps = config->kp * error_deg;
+    const float d_dps = config->kd * control->filtered_rate_dps;
+    float unsaturated = p_dps + control->integral_dps - d_dps;
+
+    /* 积分分离：大偏差不进积分；输出已饱和且误差与输出同向时不再同向积分。 */
+    const bool saturated_against_error =
+        fabsf(unsaturated) >= config->wmax_dps && error_deg * unsaturated > 0.0f;
+    if (allow_integral && config->ki > 0.0f && fabsf(error_deg) <= config->izone_deg &&
+        !saturated_against_error)
+    {
+        control->integral_dps += config->ki * error_deg * dt_s;
+        control->integral_dps =
+            clampf(control->integral_dps, -config->ilimit_dps, config->ilimit_dps);
+        unsaturated = p_dps + control->integral_dps - d_dps;
+    }
+
+    float omega = clampf(unsaturated, -config->wmax_dps, config->wmax_dps);
     const float max_delta = config->accel_dps2 * dt_s;
     control->last_omega_dps += clampf(omega - control->last_omega_dps, -max_delta, max_delta);
     omega = control->last_omega_dps;

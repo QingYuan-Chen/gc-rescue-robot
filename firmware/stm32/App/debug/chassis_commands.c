@@ -41,12 +41,14 @@ static void report(char *response, size_t capacity)
     chassis_status_t status;
     chassis_get_status(&status);
     snprintf(response, capacity,
-             "OK chassis mode=%u v_mm_s=%ld omega_mdeg_s=%ld left_mrpm=%ld right_mrpm=%ld "
+             "OK chassis mode=%u v_mm_s=%ld omega_mdeg_s=%ld i_mdps=%ld "
+             "left_mrpm=%ld right_mrpm=%ld "
              "target_yaw_mdeg=%ld yaw_mdeg=%ld error_mdeg=%ld rate_mdps=%ld "
              "distance_mm=%ld distance_target_mm=%ld remaining_ms=%lu "
              "saturated=%u imu_valid=%u settled=%u stop_reason=%u\r\n",
              (unsigned)status.mode, (long)(status.v_mm_s * 1000.0f),
-             (long)(status.omega_deg_s * 1000.0f), (long)(status.left_rpm * 1000.0f),
+             (long)(status.omega_deg_s * 1000.0f), (long)(status.i_dps * 1000.0f),
+             (long)(status.left_rpm * 1000.0f),
              (long)(status.right_rpm * 1000.0f), (long)(status.target_yaw_deg * 1000.0f),
              (long)(status.yaw_deg * 1000.0f), (long)(status.yaw_error_deg * 1000.0f),
              (long)(status.yaw_rate_dps * 1000.0f), (long)(status.distance_mm * 1000.0f),
@@ -55,7 +57,8 @@ static void report(char *response, size_t capacity)
              status.settled ? 1U : 0U, status.stop_reason);
 }
 
-static bool set_turn_parameter(const char *name, const char *text, chassis_turn_config_t *config)
+static bool set_heading_parameter(const char *name, const char *text,
+                                  chassis_hold_config_t *config, bool allow_integral)
 {
     float value;
     if (strcmp(name, "settle") == 0)
@@ -74,8 +77,27 @@ static bool set_turn_parameter(const char *name, const char *text, chassis_turn_
     else if (strcmp(name, "accel") == 0) { config->accel_dps2 = value; }
     else if (strcmp(name, "tol") == 0) { config->tol_deg = value; }
     else if (strcmp(name, "rate_tol") == 0) { config->rate_tol_dps = value; }
+    else if (allow_integral && strcmp(name, "ki") == 0) { config->ki = value; }
+    else if (allow_integral && strcmp(name, "izone") == 0) { config->izone_deg = value; }
+    else if (allow_integral && strcmp(name, "ilimit") == 0) { config->ilimit_dps = value; }
     else { return false; }
     return true;
+}
+
+static void report_hold(char *response, size_t capacity)
+{
+    chassis_hold_config_t config;
+    chassis_get_hold_config(&config);
+    snprintf(response, capacity,
+             "OK hold kp_m=%ld kd_m=%ld ki_m=%ld filter_mms=%ld wmax_mdps=%ld "
+             "accel_mdps2=%ld tol_mdeg=%ld rate_tol_mdps=%ld izone_mdeg=%ld "
+             "ilimit_mdps=%ld settle_ms=%lu\r\n",
+             (long)(config.kp * 1000.0f), (long)(config.kd * 1000.0f),
+             (long)(config.ki * 1000.0f), (long)(config.filter_ms * 1000.0f),
+             (long)(config.wmax_dps * 1000.0f), (long)(config.accel_dps2 * 1000.0f),
+             (long)(config.tol_deg * 1000.0f), (long)(config.rate_tol_dps * 1000.0f),
+             (long)(config.izone_deg * 1000.0f), (long)(config.ilimit_dps * 1000.0f),
+             (unsigned long)config.settle_ms);
 }
 
 bool chassis_commands_execute(char *line, char *response, size_t capacity)
@@ -95,12 +117,14 @@ bool chassis_commands_execute(char *line, char *response, size_t capacity)
             "turn set wmax", "turn set accel", "turn set tol", "turn set rate_tol",
             "turn set settle", "hold set kp", "hold set kd", "hold set filter",
             "hold set wmax", "hold set accel", "hold set tol", "hold set rate_tol",
-            "hold set settle", "chassis turn set kp", "chassis turn set kd",
+            "hold set settle", "hold set ki", "hold set izone", "hold set ilimit",
+            "chassis turn set kp", "chassis turn set kd",
             "chassis turn set filter", "chassis turn set wmax", "chassis turn set accel",
             "chassis turn set tol", "chassis turn set rate_tol", "chassis turn set settle",
             "chassis hold set kp", "chassis hold set kd", "chassis hold set filter",
             "chassis hold set wmax", "chassis hold set accel", "chassis hold set tol",
-            "chassis hold set rate_tol", "chassis hold set settle"};
+            "chassis hold set rate_tol", "chassis hold set settle",
+            "chassis hold set ki", "chassis hold set izone", "chassis hold set ilimit"};
         const size_t length = (size_t)(colon - line);
         bool matched = false;
         for (unsigned i = 0; i < sizeof(sliders) / sizeof(sliders[0]); i++)
@@ -173,7 +197,8 @@ bool chassis_commands_execute(char *line, char *response, size_t capacity)
     {
         chassis_turn_config_t config;
         chassis_get_turn_config(&config);
-        if (!set_turn_parameter(second, third, &config) || !chassis_set_turn_config(&config))
+        if (!set_heading_parameter(second, third, &config, false) ||
+            !chassis_set_turn_config(&config))
         {
             snprintf(response, capacity, "ERR turn parameter or range\r\n");
             return true;
@@ -186,12 +211,19 @@ bool chassis_commands_execute(char *line, char *response, size_t capacity)
     {
         chassis_hold_config_t config;
         chassis_get_hold_config(&config);
-        if (!set_turn_parameter(second, third, &config) || !chassis_set_hold_config(&config))
+        if (!set_heading_parameter(second, third, &config, true) ||
+            !chassis_set_hold_config(&config))
         {
             snprintf(response, capacity, "ERR hold parameter or range\r\n");
             return true;
         }
         snprintf(response, capacity, "OK hold set %s=%s\r\n", second, third);
+        return true;
+    }
+    if (strcmp(action, "hold") == 0 && first != NULL && strcmp(first, "get") == 0 &&
+        second == NULL)
+    {
+        report_hold(response, capacity);
         return true;
     }
     if (strcmp(action, "stop") == 0 && first == NULL)

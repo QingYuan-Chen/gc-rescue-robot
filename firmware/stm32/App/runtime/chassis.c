@@ -28,11 +28,14 @@ static chassis_turn_config_t default_turn_config(void)
 {
     return (chassis_turn_config_t){.kp = CHASSIS_TURN_KP,
                                    .kd = CHASSIS_TURN_KD,
+                                   .ki = CHASSIS_TURN_KI,
                                    .filter_ms = CHASSIS_TURN_FILTER_MS,
                                    .wmax_dps = CHASSIS_TURN_WMAX_DPS,
                                    .accel_dps2 = CHASSIS_TURN_ACCEL_DPS2,
                                    .tol_deg = CHASSIS_TURN_TOL_DEG,
                                    .rate_tol_dps = CHASSIS_TURN_RATE_TOL_DPS,
+                                   .izone_deg = CHASSIS_TURN_IZONE_DEG,
+                                   .ilimit_dps = CHASSIS_TURN_ILIMIT_DPS,
                                    .settle_ms = CHASSIS_TURN_SETTLE_MS};
 }
 
@@ -40,11 +43,14 @@ static chassis_hold_config_t default_hold_config(void)
 {
     return (chassis_hold_config_t){.kp = CHASSIS_HOLD_KP,
                                    .kd = CHASSIS_HOLD_KD,
+                                   .ki = CHASSIS_HOLD_KI,
                                    .filter_ms = CHASSIS_HOLD_FILTER_MS,
                                    .wmax_dps = CHASSIS_HOLD_WMAX_DPS,
                                    .accel_dps2 = CHASSIS_HOLD_ACCEL_DPS2,
                                    .tol_deg = CHASSIS_HOLD_TOL_DEG,
                                    .rate_tol_dps = CHASSIS_HOLD_RATE_TOL_DPS,
+                                   .izone_deg = CHASSIS_HOLD_IZONE_DEG,
+                                   .ilimit_dps = CHASSIS_HOLD_ILIMIT_DPS,
                                    .settle_ms = CHASSIS_HOLD_SETTLE_MS};
 }
 
@@ -240,7 +246,7 @@ void chassis_step(uint32_t now_ms)
     if (status.mode == CHASSIS_TURN)
     {
         const float omega = heading_control_step(&turn_control, &turn_config, heading.yaw_rad,
-                                                 heading.yaw_rate_rad_s, now_ms);
+                                                 heading.yaw_rate_rad_s, false, now_ms);
         if (!update_targets(0.0f, omega))
         {
             finish(5U);
@@ -266,8 +272,11 @@ void chassis_step(uint32_t now_ms)
             const float allowed = sqrtf(2.0f * CHASSIS_STRAIGHT_ACCEL_MM_S2 * remaining);
             if (fabsf(v_cmd) > allowed) { v_cmd = v_cmd > 0.0f ? allowed : -allowed; }
         }
+        const bool integral_allowed = fabsf(v_cmd) >= CHASSIS_HOLD_I_MIN_V_MM_S &&
+                                      (now_ms - started_ms) >= CHASSIS_HOLD_I_DELAY_MS;
         const float omega = heading_control_step(&hold_control, &hold_config, heading.yaw_rad,
-                                                 heading.yaw_rate_rad_s, now_ms);
+                                                 heading.yaw_rate_rad_s, integral_allowed,
+                                                 now_ms);
         if (!update_targets(v_cmd, omega))
         {
             finish(5U);
@@ -275,6 +284,7 @@ void chassis_step(uint32_t now_ms)
         }
         update_heading_status(&heading);
         status.omega_deg_s = omega;
+        status.i_dps = hold_control.integral_dps;
         status.settled = hold_control.settled;
     }
 }

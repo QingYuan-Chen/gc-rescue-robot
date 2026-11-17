@@ -28,6 +28,7 @@ typedef struct
     float yaw_deg;
     float yaw_error_deg;
     float yaw_rate_dps;
+    float i_dps;
     float distance_mm;
     float distance_target_mm;
     uint32_t remaining_ms;
