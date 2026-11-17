@@ -19,7 +19,7 @@ typedef struct
     uint32_t stack_free_bytes;
 } runtime_monitor_status_t;
 
-/* 由实际控制任务调用，不创建额外测试任务或独立循环。 */
+/* 由基础运行任务调用，不创建独立的观测任务。 */
 void runtime_monitor_init(uint32_t period_ms);
 void runtime_monitor_sample(uint32_t tick, bool delay_error);
 

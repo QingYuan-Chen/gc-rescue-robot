@@ -1,22 +1,39 @@
 #ifndef ROBOT_MOTOR_H
 #define ROBOT_MOTOR_H
 
-#include "wheel_types.h"
-
 #include <stdbool.h>
 #include <stdint.h>
 
-/* 定时器初始化后调用；以零输出启动左右轮，不启动其他执行器。 */
-bool motor_init(void);
+typedef enum
+{
+    MOTOR_OFF,
+    MOTOR_WAKING,
+    MOTOR_RUNNING
+} motor_phase_t;
 
-/* 仅车轮周期任务调用，范围 -1000..1000，零值同时清除 PWM 与方向输出。
- * 正值约定为车体前进，物理方向由 wheel_board.h 配置并经实车确认。
- */
-void motor_set_duty_permille(wheel_id_t wheel, int32_t duty_permille);
+typedef struct
+{
+    /* 已接入 PWM 的有符号千分比；停止/唤醒阶段为零，不代表轮子已停稳。 */
+    int16_t applied_left;
+    int16_t applied_right;
+    motor_phase_t phase_left;
+    motor_phase_t phase_right;
+} motor_status_t;
 
-/* 仅致命故障入口使用：调用方先关闭中断，调用后停留至复位。
- * 直接关闭左右轮输出，不依赖任务调度或 HAL 句柄，外设初始化前也可调用。
- */
-void motor_emergency_stop(void);
+/* 唯一调用者为车轮周期任务，初始化和停车均切回 GPIO 双低，不启动 PWM。 */
+void motor_init(uint32_t now_ms);
+void motor_stop(uint32_t now_ms);
+
+/* 单位为千分比，范围 -1000..1000；正号仅表示 OUT1->OUT2，车体方向待实测。 */
+bool motor_update(int16_t left, int16_t right, uint32_t now_ms);
+/* 零占空比保持制动仅用于已启用的速度环，普通零命令仍关闭输出。 */
+bool motor_update_with_brake(int16_t left, int16_t right, bool brake_left, bool brake_right,
+                             uint32_t now_ms);
+void motor_get_status(motor_status_t *status);
+void motor_guard_complete(uint32_t now_ms);
+void motor_guard_begin(uint32_t now_ms);
+void motor_guard_tick_isr(uint32_t now_ms);
+bool motor_guard_fault(void);
+void motor_force_outputs_low(void);
 
 #endif

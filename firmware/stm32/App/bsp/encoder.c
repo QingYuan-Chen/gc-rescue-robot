@@ -1,45 +1,46 @@
 #include "encoder.h"
 
-#include "config/wheel_board.h"
+#include "tim.h"
 
-static TIM_HandleTypeDef *const timers[WHEEL_COUNT] = {
-    &WHEEL_LEFT_ENCODER_TIMER,
-    &WHEEL_RIGHT_ENCODER_TIMER,
-};
-static const int32_t signs[WHEEL_COUNT] = {WHEEL_LEFT_ENCODER_SIGN, WHEEL_RIGHT_ENCODER_SIGN};
-static uint32_t previous_counts[WHEEL_COUNT];
+static encoder_sample_t current;
 
 bool encoder_init(void)
 {
-    for (wheel_id_t wheel = WHEEL_LEFT; wheel < WHEEL_COUNT; wheel++)
+    /* 仅启动时清零；运行中差分采样不清 CNT，避免漏计采样之间的边沿。 */
+    current = (encoder_sample_t){0};
+    __HAL_TIM_SET_COUNTER(&htim3, 0U);
+    __HAL_TIM_SET_COUNTER(&htim5, 0U);
+    if (HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL) != HAL_OK)
     {
-        if (HAL_TIM_Encoder_Start(timers[wheel], TIM_CHANNEL_ALL) != HAL_OK)
-        {
-            return false;
-        }
-        previous_counts[wheel] = __HAL_TIM_GET_COUNTER(timers[wheel]);
+        return false;
+    }
+    if (HAL_TIM_Encoder_Start(&htim5, TIM_CHANNEL_ALL) != HAL_OK)
+    {
+        /* 两轮初始化视为整体：第二路失败时撤销已启动的第一路计数。 */
+        HAL_TIM_Encoder_Stop(&htim3, TIM_CHANNEL_ALL);
+        return false;
     }
     return true;
 }
 
-int32_t encoder_read_delta_counts(wheel_id_t wheel, uint32_t *raw_count)
+static int32_t counter_delta(uint16_t value, uint16_t previous)
 {
-    if ((unsigned)wheel >= WHEEL_COUNT)
-    {
-        *raw_count = 0U;
-        return 0;
-    }
-    const uint32_t current = __HAL_TIM_GET_COUNTER(timers[wheel]);
-    const uint32_t mask = __HAL_TIM_GET_AUTORELOAD(timers[wheel]);
-    const uint32_t difference = (current - previous_counts[wheel]) & mask;
-    previous_counts[wheel] = current;
-    *raw_count = current;
+    const uint16_t difference = (uint16_t)(value - previous);
+    /* 两次采样之间位移必须小于半个计数范围，跨 0/65535 时仍保留正确符号。 */
+    return difference < 32768U ? (int32_t)difference : (int32_t)difference - 65536;
+}
 
-    /* 左轮 TIM4、右轮 TIM8 均为 16 位全量程；无符号差值处理跨零回绕。 */
-    int64_t delta = difference;
-    if (difference > mask / 2U)
-    {
-        delta -= (int64_t)mask + 1;
-    }
-    return (int32_t)(delta * signs[wheel]);
+void encoder_sample(encoder_sample_t *sample)
+{
+    /* 左 TIM5、右 TIM3，各自差分；顺序读取不是硬件同时锁存。 */
+    const uint16_t left = (uint16_t)__HAL_TIM_GET_COUNTER(&htim5);
+    const uint16_t right = (uint16_t)__HAL_TIM_GET_COUNTER(&htim3);
+    current.delta_left = -counter_delta(left, current.counter_left);
+    current.delta_right = counter_delta(right, current.counter_right);
+    current.counter_left = left;
+    current.counter_right = right;
+    /* 左轮按实测方向取反；累计使用 64 位，单位为 count。 */
+    current.total_left += current.delta_left;
+    current.total_right += current.delta_right;
+    *sample = current;
 }

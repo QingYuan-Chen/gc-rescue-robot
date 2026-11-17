@@ -1,14 +1,21 @@
 #include "debug_console.h"
-#include "wheel_commands.h"
+#include "chassis_commands.h"
+#include "motor_commands.h"
+#include "speed_commands.h"
 
 #include "bsp/debug_uart.h"
+#include "bsp/imu.h"
+#include "bsp/board_outputs.h"
+#include "runtime/heading.h"
 #include "runtime/runtime_monitor.h"
+#include "runtime/wheel_io.h"
 
 #include "cmsis_os2.h"
 #include "main.h"
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define DEBUG_CONSOLE_LINE_CAPACITY 96U
@@ -18,6 +25,8 @@
 /* 当前仅调试任务访问；参数只保存在 RAM，复位后关闭自动上报。 */
 static uint32_t report_ms;
 static uint32_t last_report_tick;
+/* 仅由调试任务复用，避免扩展状态字符串占用调用链上的任务栈。 */
+static char response[1024];
 
 static void write_text(const char *text)
 {
@@ -28,7 +37,6 @@ static void report_status(void)
 {
     runtime_monitor_status_t runtime;
     debug_uart_status_t uart;
-    char response[512];
     runtime_monitor_get_status(&runtime);
     debug_uart_get_status(&uart);
 
@@ -52,7 +60,13 @@ static void report_status(void)
     {
         debug_uart_write(response, (uint16_t)length);
     }
-    wheel_commands_format_status(response, sizeof(response));
+    /* 基础状态、GPIO 状态与车轮快照分行输出；能力标志不等于正在运动。 */
+    snprintf(response, sizeof(response),
+             "OK safety profile=tb67h450-basic left=M2 right=M1 outputs_low=%u "
+             "motor_control=1 encoders=1\r\n",
+             board_outputs_are_disabled() ? 1U : 0U);
+    write_text(response);
+    motor_commands_status(response, sizeof(response));
     write_text(response);
 }
 
@@ -60,6 +74,57 @@ static void report_parameter(void)
 {
     char response[48];
     snprintf(response, sizeof(response), "OK report_ms=%lu\r\n", (unsigned long)report_ms);
+    write_text(response);
+}
+
+static void report_imu(void)
+{
+    imu_status_t imu;
+    imu_get_status(&imu);
+    const uint32_t now = HAL_GetTick();
+    snprintf(response, sizeof(response),
+             "OK imu receiving=%u accel_frames=%lu gyro_frames=%lu angle_frames=%lu "
+             "checksum_errors=%lu uart_errors=%lu\r\n",
+             imu.receiving, (unsigned long)imu.accel_frames, (unsigned long)imu.gyro_frames,
+             (unsigned long)imu.angle_frames, (unsigned long)imu.checksum_errors,
+             (unsigned long)imu.uart_errors);
+    write_text(response);
+    if (imu.accel_frames != 0U)
+    {
+        snprintf(response, sizeof(response), "OK imu accel_mg=%ld,%ld,%ld age_ms=%lu\r\n",
+                 (long)((int32_t)imu.accel[0] * 16000 / 32768),
+                 (long)((int32_t)imu.accel[1] * 16000 / 32768),
+                 (long)((int32_t)imu.accel[2] * 16000 / 32768),
+                 (unsigned long)(now - imu.accel_ms));
+        write_text(response);
+    }
+    if (imu.gyro_frames != 0U)
+    {
+        snprintf(response, sizeof(response), "OK imu gyro_mdeg_s=%ld,%ld,%ld age_ms=%lu\r\n",
+                 (long)((int64_t)imu.gyro[0] * 2000000 / 32768),
+                 (long)((int64_t)imu.gyro[1] * 2000000 / 32768),
+                 (long)((int64_t)imu.gyro[2] * 2000000 / 32768),
+                 (unsigned long)(now - imu.gyro_ms));
+        write_text(response);
+    }
+    if (imu.angle_frames != 0U)
+    {
+        snprintf(response, sizeof(response), "OK imu angle_mdeg=%ld,%ld,%ld age_ms=%lu\r\n",
+                 (long)((int64_t)imu.angle[0] * 180000 / 32768),
+                 (long)((int64_t)imu.angle[1] * 180000 / 32768),
+                 (long)((int64_t)imu.angle[2] * 180000 / 32768),
+                 (unsigned long)(now - imu.angle_ms));
+        write_text(response);
+    }
+    heading_status_t heading;
+    heading_get_status(&heading);
+    snprintf(response, sizeof(response),
+             "OK imu heading yaw_mdeg=%ld rate_mdps=%ld age_ms=%lu period_ms=%lu "
+             "valid=%u jump=%u\r\n",
+             (long)(heading.yaw_rad * 180000.0f / 3.14159265358979323846f),
+             (long)(heading.yaw_rate_rad_s * 180000.0f / 3.14159265358979323846f),
+             (unsigned long)heading.age_ms, (unsigned long)heading.frame_period_ms,
+             heading.valid ? 1U : 0U, heading.jump_error ? 1U : 0U);
     write_text(response);
 }
 
@@ -106,17 +171,29 @@ static void execute_line(char *line)
     {
         return;
     }
-    char wheel_response[320];
-    if (wheel_commands_execute(line, wheel_response, sizeof(wheel_response)))
+    if (speed_commands_execute(line, response, sizeof(response)))
     {
-        write_text(wheel_response);
-        return;
+        if (response[0] != '\0') { write_text(response); }
     }
-    if (strcmp(line, "help") == 0)
+    else if (chassis_commands_execute(line, response, sizeof(response)))
     {
-        write_text("OK help: ping | status | get report_ms | set report_ms <0|100..60000> | "
-                   "wheel status/stop | wheel left/right <duty> <ms> | "
-                   "wheel both <left> <right> <ms>\r\n");
+        write_text(response);
+    }
+    else if (motor_commands_execute(line, response, sizeof(response)))
+    {
+        write_text(response);
+    }
+    else if (strcmp(line, "help") == 0)
+    {
+        write_text("OK help: ping | status | get report_ms | "
+                   "set report_ms <0|100..60000> | encoder | motor status | motor stop | "
+                   "motor left/right <duty> <ms> | motor both <left> <right> <ms> | "
+                   "speed cfg/set/apply/target/stop/get | "
+                   "chassis vw <v_mm_s> <w_deg_s> <ms> | chassis turn <deg> | "
+                   "chassis straight <v_mm_s> <ms> [mm] | chassis stop/get | "
+                   "turn set/hold set <param> <value> | hold get | "
+                   "vofa on left/right/both/chassis/turn | vofa off | "
+                   "vofa period 20/50/100 | imu get | imu rate <0,1,2,5,10,20,50,100,200>\r\n");
     }
     else if (strcmp(line, "ping") == 0)
     {
@@ -125,6 +202,25 @@ static void execute_line(char *line)
     else if (strcmp(line, "status") == 0)
     {
         report_status();
+    }
+    else if (strncmp(line, "imu rate ", 9U) == 0)
+    {
+        char *end = NULL;
+        const unsigned long hz = strtoul(line + 9, &end, 10);
+        if (end == line + 9 || end == NULL || *end != '\0' || hz > 200UL ||
+            !imu_set_output_rate((uint16_t)hz))
+        {
+            write_text("ERR imu rate; use 0,1,2,5,10,20,50,100,200\r\n");
+        }
+        else
+        {
+            snprintf(response, sizeof(response), "OK imu rate=%lu saved; verify with imu get\r\n", hz);
+            write_text(response);
+        }
+    }
+    else if (strcmp(line, "imu get") == 0)
+    {
+        report_imu();
     }
     else if (strcmp(line, "get report_ms") == 0)
     {
@@ -154,15 +250,16 @@ void debug_console_run(void)
     size_t length = 0U;
     bool discard_line = false;
 
-    if (!debug_uart_start())
+    if (!debug_uart_start() || !imu_start())
     {
         Error_Handler();
     }
-    write_text("READY gc-rescue-robot debug uart5 115200 8N1; use help\r\n");
+    write_text("READY gc-rescue-robot tb67h450-basic uart8 115200 8N1; use help\r\n");
 
     for (;;)
     {
         uint8_t byte;
+        /* 任一字节丢失、非法或超长时，丢弃整行直到换行，禁止执行残缺命令。 */
         bool data_lost;
         if (debug_uart_read(&byte, &data_lost, 10U))
         {
@@ -212,6 +309,18 @@ void debug_console_run(void)
         }
 
         const uint32_t tick = osKernelGetTickCount();
+        if (speed_commands_poll_result(response, sizeof(response)))
+        {
+            write_text(response);
+        }
+        else if (speed_commands_wave_due(tick, response, sizeof(response)))
+        {
+            if (length != 0U || speed_commands_result_pending() ||
+                !debug_uart_try_sample(response, (uint16_t)strlen(response)))
+            {
+                speed_commands_wave_dropped();
+            }
+        }
         if (report_ms != 0U && tick - last_report_tick >= report_ms)
         {
             last_report_tick = tick;

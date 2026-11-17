@@ -16,5 +16,6 @@
 /firmware/stm32/CMakePresets.json text eol=lf
 /firmware/stm32/App/** text eol=lf
 /vision/** text eol=lf
+/vision/**/*.png binary
 /tests/** text eol=lf
 /tools/** text eol=lf

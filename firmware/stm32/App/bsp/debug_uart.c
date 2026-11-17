@@ -1,15 +1,18 @@
 #include "debug_uart.h"
+#include "imu.h"
 
 #include "config/debug_uart_config.h"
 
 #include "FreeRTOS.h"
 #include "cmsis_os2.h"
 #include "task.h"
+#include <string.h>
 
 #define DEBUG_UART_TX_DONE 1U
 
 typedef struct
 {
+    /* 丢字节后代数递增，让任务识别队列中跨越丢失点的半条命令。 */
     uint32_t generation;
     uint8_t byte;
 } debug_uart_rx_item_t;
@@ -20,6 +23,10 @@ static uint8_t rx_byte;
 static uint32_t rx_generation;
 static uint32_t read_generation;
 static debug_uart_status_t uart_status;
+static uint8_t sample_buffer[192];
+static volatile bool sample_active;
+static uint16_t sample_length;
+static uint32_t sample_started_ms;
 
 bool debug_uart_start(void)
 {
@@ -48,6 +55,15 @@ bool debug_uart_read(uint8_t *byte, bool *data_lost, uint32_t timeout_ms)
 
 bool debug_uart_write(const char *data, uint16_t length)
 {
+    taskENTER_CRITICAL();
+    if (sample_active)
+    {
+        HAL_UART_AbortTransmit(&DEBUG_UART_HANDLE);
+        sample_active = false;
+        uart_status.sample_cancelled_count++;
+    }
+    taskEXIT_CRITICAL();
+    /* 唯一调试任务串行发送；先清掉旧完成通知，避免误判本次传输已结束。 */
     osThreadFlagsClear(DEBUG_UART_TX_DONE);
     if (HAL_UART_Transmit_IT(&DEBUG_UART_HANDLE, (const uint8_t *)data, length) == HAL_OK)
     {
@@ -70,6 +86,31 @@ bool debug_uart_write(const char *data, uint16_t length)
     return false;
 }
 
+bool debug_uart_try_sample(const char *data, uint16_t length)
+{
+    if (length == 0U || length > sizeof(sample_buffer)) { return false; }
+    if (sample_active)
+    {
+        if (osKernelGetTickCount() - sample_started_ms <= DEBUG_UART_TX_TIMEOUT_MS) { return false; }
+        HAL_UART_AbortTransmit(&DEBUG_UART_HANDLE);
+        sample_active = false;
+        taskENTER_CRITICAL();
+        uart_status.tx_error_count++;
+        uart_status.sample_cancelled_count++;
+        taskEXIT_CRITICAL();
+    }
+    memcpy(sample_buffer, data, length);
+    sample_length = length;
+    sample_active = true;
+    sample_started_ms = osKernelGetTickCount();
+    if (HAL_UART_Transmit_IT(&DEBUG_UART_HANDLE, sample_buffer, length) != HAL_OK)
+    {
+        sample_active = false;
+        return false;
+    }
+    return true;
+}
+
 void debug_uart_get_status(debug_uart_status_t *status)
 {
     taskENTER_CRITICAL();
@@ -79,6 +120,7 @@ void debug_uart_get_status(debug_uart_status_t *status)
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
 {
+    if (imu_uart_rx_callback(uart)) { return; }
     if (uart != &DEBUG_UART_HANDLE)
     {
         return;
@@ -110,12 +152,21 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *uart)
 {
     if (uart == &DEBUG_UART_HANDLE)
     {
-        osThreadFlagsSet(tx_thread, DEBUG_UART_TX_DONE);
+        if (sample_active)
+        {
+            sample_active = false;
+            uart_status.tx_bytes += sample_length;
+        }
+        else
+        {
+            osThreadFlagsSet(tx_thread, DEBUG_UART_TX_DONE);
+        }
     }
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *uart)
 {
+    if (imu_uart_error_callback(uart)) { return; }
     if (uart != &DEBUG_UART_HANDLE)
     {
         return;

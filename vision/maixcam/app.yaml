@@ -1,0 +1,8 @@
+id: capture
+name: 数据集采集5张连拍
+version: 1.0.0
+author: shuiagelv
+icon: app.png
+desc: 数据集采集程序
+files:
+  - capture_burst.py

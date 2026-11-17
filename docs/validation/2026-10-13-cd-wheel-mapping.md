@@ -11,7 +11,7 @@
 | 左轮 | D / ENCODERD1 | PB14 / TIM12_CH1 | PD2 / PD1 | PC6 / PC7 | TIM8_CH1 / CH2 |
 | 右轮 | C / ENCODERC1 | PB15 / TIM12_CH2 | PD3 / PD4 | PD12 / PD13 | TIM4_CH1 / CH2 |
 
-依据为用户确认及 `hardware/Netlist_Schematic1_4_2026-09-18.tel`。网表 `CO1/CO2` 连接 ENCODERD1，`DO1/DO2` 连接 ENCODERC1，不能按电机网络字母推断编码器插座。两路编码器均采用 TI12、16 位全量程 `ARR=65535`、输入滤波 10；PWM 保持 `PSC=239, ARR=999`，对应当前时钟下的 1 kHz。
+当时依据为用户确认及[2026-09-18 版网表](https://github.com/QingYuan-Chen/gc-rescue-robot/blob/81af515ca904fd1c705d21c3eaa0592fa4a57d47/hardware/Netlist_Schematic1_4_2026-09-18.tel)。网表 `CO1/CO2` 连接 ENCODERD1，`DO1/DO2` 连接 ENCODERC1，不能按电机网络字母推断编码器插座。两路编码器均采用 TI12、16 位全量程 `ARR=65535`、输入滤波 10；PWM 保持 `PSC=239, ARR=999`，对应当前时钟下的 1 kHz。
 
 ## 修改范围与行为
 

@@ -17,105 +17,46 @@
   */
 /* USER CODE END Header */
 
-/* Includes ------------------------------------------------------------------*/
+/* HAL 毫秒时基独占 TIM6，将 TIM17 留给左电机 IN2。 */
 #include "stm32h7xx_hal.h"
-#include "stm32h7xx_hal_tim.h"
 
-/* Private typedef -----------------------------------------------------------*/
-/* Private define ------------------------------------------------------------*/
-/* Private macro -------------------------------------------------------------*/
-/* Private variables ---------------------------------------------------------*/
-TIM_HandleTypeDef        htim17;
-/* Private function prototypes -----------------------------------------------*/
-/* Private functions ---------------------------------------------------------*/
+TIM_HandleTypeDef htim6;
 
-/**
-  * @brief  This function configures the TIM17 as a time base source.
-  *         The time source is configured  to have 1ms time base with a dedicated
-  *         Tick interrupt priority.
-  * @note   This function is called  automatically at the beginning of program after
-  *         reset by HAL_Init() or at any time when clock is configured, by HAL_RCC_ClockConfig().
-  * @param  TickPriority: Tick interrupt priority.
-  * @retval HAL status
-  */
 HAL_StatusTypeDef HAL_InitTick(uint32_t TickPriority)
 {
-  RCC_ClkInitTypeDef    clkconfig;
-  uint32_t              uwTimclock;
-  uint32_t              uwPrescalerValue;
-  uint32_t              pFLatency;
-
-  /*Configure the TIM17 IRQ priority */
-  if (TickPriority < (1UL << __NVIC_PRIO_BITS))
-   {
-     HAL_NVIC_SetPriority(TIM17_IRQn, TickPriority ,0);
-
-     /* Enable the TIM17 global Interrupt */
-     HAL_NVIC_EnableIRQ(TIM17_IRQn);
-     uwTickPrio = TickPriority;
-    }
-  else
-  {
-    return HAL_ERROR;
-  }
-
-  /* Enable TIM17 clock */
-  __HAL_RCC_TIM17_CLK_ENABLE();
-
-  /* Get clock configuration */
-  HAL_RCC_GetClockConfig(&clkconfig, &pFLatency);
-
-  /* Compute TIM17 clock */
-      uwTimclock = 2*HAL_RCC_GetPCLK2Freq();
-
-  /* Compute the prescaler value to have TIM17 counter clock equal to 1MHz */
-  uwPrescalerValue = (uint32_t) ((uwTimclock / 1000000U) - 1U);
-
-  /* Initialize TIM17 */
-  htim17.Instance = TIM17;
-
-  /* Initialize TIMx peripheral as follow:
-   * Period = [(TIM17CLK/1000) - 1]. to have a (1/1000) s time base.
-   * Prescaler = (uwTimclock/1000000 - 1) to have a 1MHz counter clock.
-   * ClockDivision = 0
-   * Counter direction = Up
-   */
-  htim17.Init.Period = (1000000U / 1000U) - 1U;
-  htim17.Init.Prescaler = uwPrescalerValue;
-  htim17.Init.ClockDivision = 0;
-  htim17.Init.CounterMode = TIM_COUNTERMODE_UP;
-
-  if(HAL_TIM_Base_Init(&htim17) == HAL_OK)
-  {
-    /* Start the TIM time Base generation in interrupt mode */
-    return HAL_TIM_Base_Start_IT(&htim17);
-  }
-
-  /* Return function status */
-  return HAL_ERROR;
+  RCC_ClkInitTypeDef clocks;
+  uint32_t latency;
+  if (TickPriority >= (1UL << __NVIC_PRIO_BITS)) { return HAL_ERROR; }
+  __HAL_RCC_TIM6_CLK_ENABLE();
+  /* HAL_Init 和系统时钟切换都会调用，先停止旧时基再重配。 */
+  TIM6->CR1 = 0U;
+  TIM6->DIER = 0U;
+  HAL_RCC_GetClockConfig(&clocks, &latency);
+  /* 当前 TIMPRE 使用复位配置：APB1 不分频时同频，其余当前配置为 PCLK1 的两倍。 */
+  uint32_t timer_clock = HAL_RCC_GetPCLK1Freq();
+  if (clocks.APB1CLKDivider != RCC_APB1_DIV1) { timer_clock *= 2U; }
+  htim6.Instance = TIM6;
+  htim6.Init.Prescaler = timer_clock / 1000000U - 1U;
+  htim6.Init.Period = 999U;
+  htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim6.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim6) != HAL_OK) { return HAL_ERROR; }
+  /* 初始化会产生更新标志，启用 IRQ 前清除，避免将配置事件多算成一次毫秒 tick。 */
+  __HAL_TIM_CLEAR_FLAG(&htim6, TIM_FLAG_UPDATE);
+  HAL_NVIC_SetPriority(TIM6_DAC_IRQn, TickPriority, 0U);
+  HAL_NVIC_ClearPendingIRQ(TIM6_DAC_IRQn);
+  HAL_NVIC_EnableIRQ(TIM6_DAC_IRQn);
+  uwTickPrio = TickPriority;
+  return HAL_TIM_Base_Start_IT(&htim6);
 }
 
-/**
-  * @brief  Suspend Tick increment.
-  * @note   Disable the tick increment by disabling TIM17 update interrupt.
-  * @param  None
-  * @retval None
-  */
 void HAL_SuspendTick(void)
 {
-  /* Disable TIM17 update Interrupt */
-  __HAL_TIM_DISABLE_IT(&htim17, TIM_IT_UPDATE);
+  __HAL_TIM_DISABLE_IT(&htim6, TIM_IT_UPDATE);
 }
 
-/**
-  * @brief  Resume Tick increment.
-  * @note   Enable the tick increment by Enabling TIM17 update interrupt.
-  * @param  None
-  * @retval None
-  */
 void HAL_ResumeTick(void)
 {
-  /* Enable TIM17 Update interrupt */
-  __HAL_TIM_ENABLE_IT(&htim17, TIM_IT_UPDATE);
+  __HAL_TIM_ENABLE_IT(&htim6, TIM_IT_UPDATE);
 }
-
