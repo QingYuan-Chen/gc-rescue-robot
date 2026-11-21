@@ -48,7 +48,7 @@ bool wheel_io_init(uint32_t now_ms)
     targets[0] = targets[1] = 0.0f;
     for (unsigned i = 0; i < 2U; i++)
     {
-        wheel_speed_init(&controllers[i]);
+        wheel_speed_reset(&controllers[i]);
     }
     previous_ms = now_ms;
     previous_us = time_us_now();
@@ -118,7 +118,6 @@ bool wheel_io_speed_target(float left_rpm, float right_rpm)
 
 bool wheel_io_chassis_set(float left_rpm, float right_rpm)
 {
-    if (!isfinite(left_rpm) || !isfinite(right_rpm)) { return false; }
     taskENTER_CRITICAL();
     bool accepted = published.ready && !published.fault && !motor_guard_fault() && !stop_pending;
     if (!chassis_claimed)
@@ -147,6 +146,25 @@ bool wheel_io_chassis_claimed(void)
     return claimed;
 }
 
+static void clear_motion_state(wheel_io_status_t *next, bool clear_request)
+{
+    targets[0] = targets[1] = 0.0f;
+    wheel_speed_reset(&controllers[0]);
+    wheel_speed_reset(&controllers[1]);
+    next->speed_running = false;
+    next->remaining_ms = 0U;
+    next->requested_left = next->requested_right = 0;
+    next->session = false;
+    next->selected = 0U;
+    taskENTER_CRITICAL();
+    session_claimed = false;
+    chassis_claimed = false;
+    chassis_targets[0] = chassis_targets[1] = 0.0f;
+    if (clear_request) { request = (drive_request_t){0}; }
+    speed_target_pending = false;
+    taskEXIT_CRITICAL();
+}
+
 void wheel_io_step(uint32_t now_ms, bool delay_error)
 {
     const uint32_t sample_us = time_us_now();
@@ -160,19 +178,14 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
     encoder_sample(&next.encoder);
     speed_counts[0] += next.encoder.delta_left;
     speed_counts[1] += next.encoder.delta_right;
-    bool speed_sample_invalid = false;
     if (++speed_sample_count == WHEEL_SPEED_SAMPLE_PERIOD_MS / WHEEL_SAMPLE_PERIOD_MS)
     {
         const uint32_t speed_dt_us = sample_us - speed_sample_us;
-        speed_sample_invalid = speed_dt_us == 0U;
-        if (speed_dt_us != 0U)
+        const float alpha = (float)speed_dt_us / (WHEEL_SPEED_FILTER_TAU_US + (float)speed_dt_us);
+        for (unsigned i = 0; i < 2U; i++)
         {
-            const float alpha = (float)speed_dt_us / (WHEEL_SPEED_FILTER_TAU_US + (float)speed_dt_us);
-            for (unsigned i = 0; i < 2U; i++)
-            {
-                const float raw_rpm = wheel_speed_measure_rpm(speed_counts[i], speed_dt_us);
-                measured_rpm[i] += alpha * (raw_rpm - measured_rpm[i]);
-            }
+            const float raw_rpm = wheel_speed_measure_rpm(speed_counts[i], speed_dt_us);
+            measured_rpm[i] += alpha * (raw_rpm - measured_rpm[i]);
         }
         speed_counts[0] = speed_counts[1] = 0;
         speed_sample_us = sample_us;
@@ -193,7 +206,7 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
     }
     taskEXIT_CRITICAL();
 
-    if (delay_error || speed_sample_invalid || next.interval_ms > 2U * WHEEL_SAMPLE_PERIOD_MS || dt_us < 1000U ||
+    if (delay_error || next.interval_ms > 2U * WHEEL_SAMPLE_PERIOD_MS || dt_us < 1000U ||
         dt_us > 20000U || motor_guard_fault())
     {
         next.fault = true;
@@ -201,21 +214,8 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
     }
     if (stopped || next.fault)
     {
-        targets[0] = targets[1] = 0.0f;
-        wheel_speed_reset(&controllers[0]);
-        wheel_speed_reset(&controllers[1]);
-        next.speed_running = false;
-        next.remaining_ms = 0U;
-        next.requested_left = next.requested_right = 0;
+        clear_motion_state(&next, next.fault);
         if (!next.fault) { next.stop_reason = 4U; }
-        next.session = false;
-        next.selected = 0U;
-        taskENTER_CRITICAL();
-        session_claimed = false;
-        chassis_claimed = false;
-        chassis_targets[0] = chassis_targets[1] = 0.0f;
-        speed_target_pending = false;
-        taskEXIT_CRITICAL();
     }
     else if (has_target)
     {
@@ -248,11 +248,9 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
         const int32_t delta[2] = {next.encoder.delta_left, next.encoder.delta_right};
         for (unsigned i = 0; i < 2U; i++)
         {
-            if ((next.selected & (1U << i)) &&
-                !wheel_speed_step(&controllers[i], targets[i], measured_rpm[i], delta[i], dt_us))
+            if (next.selected & (1U << i))
             {
-                next.fault = true;
-                next.stop_reason = 3U;
+                wheel_speed_step(&controllers[i], targets[i], measured_rpm[i], delta[i], dt_us);
             }
             brakes[i] = controllers[i].phase != WHEEL_SPEED_OFF;
         }
@@ -284,11 +282,6 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
     }
 
     taskENTER_CRITICAL();
-    if (next.fault)
-    {
-        next.requested_left = next.requested_right = 0;
-        brakes[0] = brakes[1] = false;
-    }
     if (next.requested_left || next.requested_right || brakes[0] || brakes[1])
     {
         motor_guard_begin(HAL_GetTick());
@@ -297,54 +290,26 @@ void wheel_io_step(uint32_t now_ms, bool delay_error)
                         ? motor_update_with_brake(next.requested_left, next.requested_right,
                                                   brakes[0], brakes[1], now_ms)
                         : motor_update(next.requested_left, next.requested_right, now_ms);
+    motor_get_status(&next.motor);
+    taskEXIT_CRITICAL();
+
     if (!ok)
     {
         next.fault = true;
         next.stop_reason = 2U;
-        next.requested_left = next.requested_right = 0;
-        next.remaining_ms = 0U;
+        clear_motion_state(&next, true);
     }
-    motor_get_status(&next.motor);
-    taskEXIT_CRITICAL();
+    else if (next.speed_running && !next.fault)
+    {
+        wheel_speed_feedback_output(&controllers[0], next.motor.applied_left, dt_us);
+        wheel_speed_feedback_output(&controllers[1], next.motor.applied_right, dt_us);
+    }
 
-    if (next.speed_running && !next.fault)
+    for (unsigned i = 0; i < 2U; i++)
     {
-        if (!wheel_speed_feedback_output(&controllers[0], next.motor.applied_left, dt_us) ||
-            !wheel_speed_feedback_output(&controllers[1], next.motor.applied_right, dt_us))
+        if (!next.speed_running || !(next.selected & (1U << i)))
         {
-            next.fault = true;
-            next.stop_reason = 3U;
-            taskENTER_CRITICAL();
-            motor_force_outputs_low();
-            motor_stop(now_ms);
-            motor_get_status(&next.motor);
-            taskEXIT_CRITICAL();
-            next.requested_left = next.requested_right = 0;
-            next.remaining_ms = 0U;
-        }
-    }
-    if (next.fault)
-    {
-        next.session = next.speed_running = false;
-        targets[0] = targets[1] = 0.0f;
-        wheel_speed_reset(&controllers[0]);
-        wheel_speed_reset(&controllers[1]);
-        taskENTER_CRITICAL();
-        session_claimed = false;
-        chassis_claimed = false;
-        chassis_targets[0] = chassis_targets[1] = 0.0f;
-        request = (drive_request_t){0};
-        speed_target_pending = false;
-        taskEXIT_CRITICAL();
-    }
-    if (dt_us >= 1000U && dt_us <= 20000U)
-    {
-        for (unsigned i = 0; i < 2U; i++)
-        {
-            if (!next.speed_running || !(next.selected & (1U << i)))
-            {
-                controllers[i].feedback_rpm = measured_rpm[i];
-            }
+            controllers[i].feedback_rpm = measured_rpm[i];
         }
     }
     next.speed[0] = controllers[0];

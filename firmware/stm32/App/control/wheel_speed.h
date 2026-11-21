@@ -4,13 +4,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef struct
-{
-    float kp;
-    float ki;
-    float ramp_rpm_s;
-    int16_t limit;
-} wheel_speed_config_t;
+/* 速度环固定整定参数（实车已验收）：Kp、Ki 与目标斜坡。 */
+#define WHEEL_SPEED_KP 33.0f
+#define WHEEL_SPEED_KI 40.0f
+#define WHEEL_SPEED_RAMP_RPM_S 300.0f
 
 typedef enum
 {
@@ -21,7 +18,6 @@ typedef enum
 
 typedef struct
 {
-    wheel_speed_config_t config;
     wheel_speed_phase_t phase;
     float target_rpm;
     float effective_rpm;
@@ -38,12 +34,11 @@ typedef struct
     uint8_t quiet_counts;
 } wheel_speed_t;
 
-void wheel_speed_init(wheel_speed_t *wheel);
 /* dt_us 为有效的非零采样间隔。 */
 float wheel_speed_measure_rpm(int32_t delta_counts, uint32_t dt_us);
 void wheel_speed_reset(wheel_speed_t *wheel);
-bool wheel_speed_step(wheel_speed_t *wheel, float target_rpm, float feedback_rpm,
+void wheel_speed_step(wheel_speed_t *wheel, float target_rpm, float feedback_rpm,
                       int32_t delta_counts, uint32_t dt_us);
-bool wheel_speed_feedback_output(wheel_speed_t *wheel, int16_t applied, uint32_t dt_us);
+void wheel_speed_feedback_output(wheel_speed_t *wheel, int16_t applied, uint32_t dt_us);
 
 #endif

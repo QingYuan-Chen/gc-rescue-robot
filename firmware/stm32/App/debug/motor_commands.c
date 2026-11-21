@@ -81,11 +81,11 @@ bool motor_commands_execute(const char *line, char *response, size_t capacity)
     {
         return false;
     }
-    const char *values;
+    const char *values = NULL;
     /* 默认另一轮为零，实现单轮命令的显式隔离，不继承上一条双轮请求。 */
     int left = 0;
     int right = 0;
-    int duration;
+    int duration = 0;
     bool valid = false;
     if (strncmp(line + 6, "left ", 5U) == 0)
     {
@@ -103,19 +103,18 @@ bool motor_commands_execute(const char *line, char *response, size_t capacity)
         valid = parse_integer(&values, &left) && parse_integer(&values, &right) &&
                 parse_integer(&values, &duration);
     }
-    else
+    if (valid)
     {
-        values = "invalid";
-    }
-    while (*values == ' ' || *values == '\t')
-    {
-        values++;
+        while (*values == ' ' || *values == '\t')
+        {
+            values++;
+        }
+        valid = *values == '\0';
     }
     /* 先验证整行再转换到窄类型，避免溢出后的值被误当成合法占空比。 */
-    if (!valid || *values != '\0' || left < -WHEEL_COMMAND_MAX_DUTY ||
-        left > WHEEL_COMMAND_MAX_DUTY || right < -WHEEL_COMMAND_MAX_DUTY ||
-        right > WHEEL_COMMAND_MAX_DUTY || duration < (int)WHEEL_SAMPLE_PERIOD_MS ||
-        duration > (int)WHEEL_COMMAND_MAX_DURATION_MS)
+    if (!valid || left < -WHEEL_COMMAND_MAX_DUTY || left > WHEEL_COMMAND_MAX_DUTY ||
+        right < -WHEEL_COMMAND_MAX_DUTY || right > WHEEL_COMMAND_MAX_DUTY ||
+        duration < (int)WHEEL_SAMPLE_PERIOD_MS || duration > (int)WHEEL_COMMAND_MAX_DURATION_MS)
     {
         snprintf(response, capacity,
                  "ERR motor use left/right <duty> <ms> or both <left> <right> <ms>; "

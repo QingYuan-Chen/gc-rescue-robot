@@ -188,9 +188,7 @@ static bool update_side(unsigned side, int16_t duty, bool brake, bool continuous
 static bool update_both(int16_t left, int16_t right, bool brake_left, bool brake_right,
                         bool continuous, uint32_t now_ms)
 {
-    /* 底层只约束物理占空比；首次联调的更小范围由 wheel_io 入口限制。 */
-    if (left < -1000 || left > 1000 || right < -1000 || right > 1000 ||
-        guard_tripped || !update_side(0U, (int16_t)-left, brake_left, continuous, now_ms) ||
+    if (guard_tripped || !update_side(0U, (int16_t)-left, brake_left, continuous, now_ms) ||
         !update_side(1U, right, brake_right, continuous, now_ms))
     {
         motor_stop(now_ms);

@@ -1,6 +1,5 @@
 #include "chassis_commands.h"
 
-#include "config/chassis_config.h"
 #include "runtime/chassis.h"
 
 #include <errno.h>
@@ -14,7 +13,7 @@ static bool parse_number(const char *text, float *value)
     char *end = NULL;
     errno = 0;
     const float number = strtof(text, &end);
-    if (errno != 0 || end == text || end == NULL || *end != '\0' || !isfinite(number))
+    if (errno != 0 || end == text || *end != '\0' || !isfinite(number))
     {
         return false;
     }
@@ -24,11 +23,11 @@ static bool parse_number(const char *text, float *value)
 
 static bool parse_duration(const char *text, uint32_t *value)
 {
+    if (text[0] < '0' || text[0] > '9') { return false; }
     char *end = NULL;
     errno = 0;
     const unsigned long number = strtoul(text, &end, 10);
-    if (errno != 0 || end == text || end == NULL || *end != '\0' ||
-        number < CHASSIS_COMMAND_MIN_MS || number > CHASSIS_COMMAND_MAX_MS)
+    if (errno != 0 || *end != '\0' || number > UINT32_MAX)
     {
         return false;
     }
@@ -153,7 +152,6 @@ bool chassis_commands_execute(char *line, char *response, size_t capacity)
     char *second = strtok_r(NULL, " \t", &save);
     char *third = strtok_r(NULL, " \t", &save);
     char *fourth = strtok_r(NULL, " \t", &save);
-    if (action == NULL) { snprintf(response, capacity, "ERR chassis command\r\n"); return true; }
 
     if (strcmp(action, "vw") == 0 && first != NULL && second != NULL && third != NULL &&
         fourth == NULL)

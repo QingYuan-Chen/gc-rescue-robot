@@ -15,7 +15,6 @@
 """
 
 import os
-import traceback
 
 from maix import app, camera, display, image, key, time
 
@@ -34,8 +33,6 @@ EXIT_LONG_PRESS_MS = 3000  # 长按多久退出，避免按键停留过久误退
 # linux,code = 431（KEY_DISPLAYTOGGLE），不在 MaixPy 的 Keys 枚举内；
 # KEY_OK 保留给其他把 USER 键映射为 OK 的板子。
 TRIGGER_KEYS = (key.Keys.KEY_OK, 431)
-
-TOTAL_SPAN_MS = SHOT_INTERVAL_MS * (BURST_COUNT - 1)
 
 
 class BurstCapture:
@@ -80,9 +77,6 @@ class BurstCapture:
         os.makedirs(SAVE_ROOT, exist_ok=True)
         print(f"[就绪] 短按 USER 键拍摄 {BURST_COUNT} 张，时间窗 {BURST_WINDOW_MS} ms，"
               f"保存到 {SAVE_ROOT}；长按 {EXIT_LONG_PRESS_MS // 1000} 秒退出")
-        if TOTAL_SPAN_MS > BURST_WINDOW_MS:
-            print(f"[警告] 计划跨度 {TOTAL_SPAN_MS} ms 超过时间窗 {BURST_WINDOW_MS} ms，"
-                  f"请调小 SHOT_INTERVAL_MS")
         try:
             while not app.need_exit():
                 if self._exit_requested and not self._busy:
@@ -129,9 +123,6 @@ class BurstCapture:
 
     def _capture_due(self, img, now_ms):
         # 每轮主循环最多保存一张，避免落后进度时把同一帧重复存成多张。
-        if self._shot_index >= BURST_COUNT:
-            self._finish_burst(now_ms)
-            return
         due_ms = self._burst_start_ms + self._shot_index * SHOT_INTERVAL_MS
         if now_ms < due_ms:
             return
@@ -165,25 +156,19 @@ class BurstCapture:
             print(f"[采集] 第 {self._session_count} 组异常：成功 {self._saved_count}/{BURST_COUNT}，"
                   f"最后一张在 {last_ms} ms，未满足 {BURST_WINDOW_MS} ms 时间窗")
         self._write_meta(now_ms)
-        try:
-            os.sync()  # 采集场景主动刷新到 TF 卡，降低断电丢图风险
-        except OSError as exc:
-            print(f"[采集] 刷盘失败：{exc}")
+        os.sync()  # 采集场景主动刷新到 TF 卡，降低断电丢图风险
 
     def _write_meta(self, now_ms):
         meta_path = os.path.join(self._folder, "meta.txt")
-        try:
-            with open(meta_path, "w", encoding="utf-8") as file:
-                file.write(f"触发时间: {time.localtime().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                file.write(f"时间窗: {BURST_WINDOW_MS} ms，目标 {BURST_COUNT} 张，"
-                           f"间隔 {SHOT_INTERVAL_MS} ms\n")
-                file.write(f"分辨率: {FRAME_WIDTH}x{FRAME_HEIGHT}\n")
-                file.write(f"成功: {self._saved_count}/{BURST_COUNT}，失败: {self._failed_count}\n")
-                for number, path, elapsed_ms in self._burst_meta:
-                    file.write(f"第 {number} 张: {os.path.basename(path)}，触发后 {elapsed_ms} ms\n")
-                file.write(f"本组总耗时: {now_ms - self._burst_start_ms} ms\n")
-        except Exception as exc:
-            print(f"[采集] 写入 meta.txt 失败：{exc}")
+        with open(meta_path, "w", encoding="utf-8") as file:
+            file.write(f"触发时间: {time.localtime().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            file.write(f"时间窗: {BURST_WINDOW_MS} ms，目标 {BURST_COUNT} 张，"
+                       f"间隔 {SHOT_INTERVAL_MS} ms\n")
+            file.write(f"分辨率: {FRAME_WIDTH}x{FRAME_HEIGHT}\n")
+            file.write(f"成功: {self._saved_count}/{BURST_COUNT}，失败: {self._failed_count}\n")
+            for number, path, elapsed_ms in self._burst_meta:
+                file.write(f"第 {number} 张: {os.path.basename(path)}，触发后 {elapsed_ms} ms\n")
+            file.write(f"本组总耗时: {now_ms - self._burst_start_ms} ms\n")
 
     # ---------------- 屏幕提示 ----------------
     def _show(self, img):
@@ -215,8 +200,6 @@ def main():
         BurstCapture().run()
     except KeyboardInterrupt:
         print("[退出] 收到中断，程序结束")
-    except Exception:
-        traceback.print_exc()
 
 
 if __name__ == "__main__":

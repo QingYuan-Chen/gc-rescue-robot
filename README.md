@@ -9,7 +9,7 @@ STM32H750 与 MaixCAM Pro 救援机器人。当前驱动板采用 TB67H450，左
 - 左编码器 TIM5，右编码器 TIM3；10 ms 双轮速度 PI，PWM 限幅 800‰、斜坡 300 RPM/s，参数固定在源码中，不提供在线整定。
 - 差速层：`chassis vw`、原地定角转向 `chassis turn`、锁定航向直行 `chassis straight`，带限速、超时和差速饱和处理；已上板验收。
 - JY61P 使用 USART3 PD8/PD9 接收，提供连续航向和角速度；UART8 `imu get` 可查看原始数据和 `heading` 状态；已上板验收。
-- 夹爪使用 PE11，PC1 打开（1750 μs）、PC2 闭合（2300 μs）；按键功能已上板验收。
+- 云台与夹爪按键控制：TIM7 时分复用输出 50 Hz 双路舵机脉冲；PC2 切换云台 PE9（Servo1）俯瞰夹取（1000 μs）/ 搜集物料（1300 μs）两种模式，PC1 切换夹爪 PE11（Servo2）打开（1750 μs）/ 闭合（2300 μs）；复位后两路均保持低电平，各自首次按下才启动输出。
 
 接线、调试命令与测试记录见 [M1/M2 联调记录](docs/validation/2026-11-10-m1-m2-uart8.md)、[电机接口说明](docs/基础电机与编码器接口.md)、[速度环 VOFA+ 调试](docs/底盘速度环VOFA调试.md)、[差速与转向环调试](docs/底盘差速与转向环调试.md)、[JY61P 接入说明](docs/JY61P陀螺仪接入.md)和[实车验收记录](docs/validation/2026-11-19-chassis-field-acceptance.md)。
 

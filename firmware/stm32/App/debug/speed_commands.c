@@ -5,6 +5,7 @@
 #include "runtime/wheel_io.h"
 #include "bsp/debug_uart.h"
 #include "config/chassis_config.h"
+#include "config/wheel_config.h"
 #include "cmsis_os2.h"
 
 #include <inttypes.h>
@@ -20,7 +21,6 @@ static uint32_t dropped_waves;
 
 static bool decimal(const char *s, float *value)
 {
-    if (s == NULL || *s == '\0') { return false; }
     bool negative = false;
     if (*s == '-' || *s == '+') { negative = *s++ == '-'; }
     bool digit = false;
@@ -51,7 +51,6 @@ static bool decimal(const char *s, float *value)
 
 static uint8_t wheels(const char *text)
 {
-    if (text == NULL) { return 0U; }
     if (strcmp(text, "left") == 0) { return 1U; }
     if (strcmp(text, "right") == 0) { return 2U; }
     if (strcmp(text, "both") == 0) { return 3U; }
@@ -74,7 +73,10 @@ static void status_text(char *response, size_t capacity)
     wheel_io_get_status(&s);
     debug_uart_get_status(&uart);
     char target[2][24], ref[2][24], feedback[2][24], error[2][24], p[2][24], integral[2][24];
-    char free_output[2][24], kp[2][24], ki[2][24], ramp[2][24];
+    char free_output[2][24], kp[24], ki[24], ramp[24];
+    fixed(kp, sizeof(kp), WHEEL_SPEED_KP);
+    fixed(ki, sizeof(ki), WHEEL_SPEED_KI);
+    fixed(ramp, sizeof(ramp), WHEEL_SPEED_RAMP_RPM_S);
     for (unsigned i = 0; i < 2U; i++)
     {
         fixed(target[i], sizeof(target[i]), s.target_rpm[i]);
@@ -84,11 +86,8 @@ static void status_text(char *response, size_t capacity)
         fixed(p[i], sizeof(p[i]), s.speed[i].proportional);
         fixed(integral[i], sizeof(integral[i]), s.speed[i].integral);
         fixed(free_output[i], sizeof(free_output[i]), s.speed[i].unconstrained);
-        fixed(kp[i], sizeof(kp[i]), s.speed[i].config.kp);
-        fixed(ki[i], sizeof(ki[i]), s.speed[i].config.ki);
-        fixed(ramp[i], sizeof(ramp[i]), s.speed[i].config.ramp_rpm_s);
     }
-    const int written = snprintf(response, capacity,
+    snprintf(response, capacity,
              "OK speed session=%u claimed=%u stop_pending=%u running=%u selected=%u fault=%u reason=%u dt_us=%lu "
              "dropped=%lu\r\n"
              "OK left target=%s ref=%s rpm=%s error=%s p=%s i=%s free=%s req=%d out=%d "
@@ -100,14 +99,10 @@ static void status_text(char *response, size_t capacity)
              (unsigned long)(dropped_waves + uart.sample_cancelled_count),
              target[0], ref[0], feedback[0], error[0], p[0], integral[0], free_output[0],
              s.speed[0].requested, s.motor.applied_left, s.speed[0].phase, s.speed[0].saturated,
-             (long)s.encoder.delta_left, s.encoder.total_left, kp[0], ki[0], s.speed[0].config.limit, ramp[0],
+             (long)s.encoder.delta_left, s.encoder.total_left, kp, ki, WHEEL_COMMAND_MAX_DUTY, ramp,
              target[1], ref[1], feedback[1], error[1], p[1], integral[1], free_output[1],
              s.speed[1].requested, s.motor.applied_right, s.speed[1].phase, s.speed[1].saturated,
-             (long)s.encoder.delta_right, s.encoder.total_right, kp[1], ki[1], s.speed[1].config.limit, ramp[1]);
-    if (written < 0 || (size_t)written >= capacity)
-    {
-        snprintf(response, capacity, "ERR speed status too long\r\n");
-    }
+             (long)s.encoder.delta_right, s.encoder.total_right, kp, ki, WHEEL_COMMAND_MAX_DUTY, ramp);
 }
 
 bool speed_commands_execute(char *line, char *response, size_t capacity)
@@ -211,7 +206,6 @@ bool speed_commands_wave_due(uint32_t tick, char *response, size_t capacity)
     last_wave_ms = tick;
     wheel_io_status_t s;
     char a[24], b[24], c[24], d[24], e[24], f[24], g[24], h[24];
-    int written;
     if (view == 4U)
     {
         chassis_status_t chassis;
@@ -231,7 +225,7 @@ bool speed_commands_wave_due(uint32_t tick, char *response, size_t capacity)
         fixed(f, sizeof(f), s.speed[1].feedback_rpm);
         fixed(g, sizeof(g), heading.yaw_rate_rad_s * 57.2957795f);
         fixed(h, sizeof(h), encoder_omega_deg_s);
-        written = snprintf(response, capacity,
+        snprintf(response, capacity,
                  "chassis:%lu,%s,%s,%s,%s,%s,%s,%s,%s,%u\n",
                  (unsigned long)s.sample_ms, a, b, c, d, e, f, g, h,
                  chassis.saturated ? 1U : 0U);
@@ -250,7 +244,7 @@ bool speed_commands_wave_due(uint32_t tick, char *response, size_t capacity)
         fixed(e, sizeof(e), chassis.omega_deg_s);
         fixed(f, sizeof(f), chassis.left_rpm);
         fixed(g, sizeof(g), chassis.right_rpm);
-        written = snprintf(response, capacity,
+        snprintf(response, capacity,
                  "turn:%lu,%s,%s,%s,%s,%s,%s,%s,%u,%u,%lu\n",
                  (unsigned long)s.sample_ms, a, b, c, d, e, f, g,
                  (unsigned)chassis.mode, chassis.stop_reason,
@@ -264,7 +258,7 @@ bool speed_commands_wave_due(uint32_t tick, char *response, size_t capacity)
         fixed(c, sizeof(c), s.speed[1].effective_rpm);
         fixed(d, sizeof(d), s.speed[1].feedback_rpm);
         fixed(e, sizeof(e), (float)s.dt_us / 1000.0f);
-        written = snprintf(response, capacity, "speed:%lu,%s,%s,%d,%s,%s,%d,%s,%u\n",
+        snprintf(response, capacity, "speed:%lu,%s,%s,%d,%s,%s,%d,%s,%u\n",
                  (unsigned long)s.sample_ms, a, b, s.motor.applied_left, c, d,
                  s.motor.applied_right, e, s.fault ? s.stop_reason : 0U);
     }
@@ -275,18 +269,13 @@ bool speed_commands_wave_due(uint32_t tick, char *response, size_t capacity)
         fixed(a, sizeof(a), s.speed[i].effective_rpm);
         fixed(b, sizeof(b), s.speed[i].feedback_rpm);
         fixed(c, sizeof(c), s.speed[i].error_rpm);
-        fixed(d, sizeof(d), s.speed[i].config.kp);
-        fixed(e, sizeof(e), s.speed[i].config.ki);
+        fixed(d, sizeof(d), WHEEL_SPEED_KP);
+        fixed(e, sizeof(e), WHEEL_SPEED_KI);
         fixed(f, sizeof(f), 0.0f);
-        written = snprintf(response, capacity, "speed:%lu,%s,%s,%s,%d,%s,%s,%s,%ld\n",
+        snprintf(response, capacity, "speed:%lu,%s,%s,%s,%d,%s,%s,%s,%ld\n",
                  (unsigned long)s.sample_ms, a, b, c,
                  i == 0U ? s.motor.applied_left : s.motor.applied_right, d, e, f,
                  (long)(i == 0U ? s.encoder.delta_left : s.encoder.delta_right));
-    }
-    if (written < 0 || (size_t)written >= capacity)
-    {
-        dropped_waves++;
-        return false;
     }
     return true;
 }

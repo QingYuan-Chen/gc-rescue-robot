@@ -28,10 +28,7 @@ def fields(line):
         try:
             result[key] = int(value)
         except ValueError:
-            try:
-                result[key] = float(value)
-            except ValueError:
-                result[key] = value
+            result[key] = value
     return result
 
 
@@ -82,9 +79,6 @@ def main():
             result["motor"] = fields(motor_line)
             check_idle(result["runtime"], result["safety"], result["motor"])
             result["passed"] = True
-    except Exception as error:
-        result["error"] = str(error)
-        raise
     finally:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

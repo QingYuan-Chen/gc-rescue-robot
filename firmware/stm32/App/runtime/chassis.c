@@ -89,10 +89,7 @@ static void update_distance(void)
 static bool update_targets(float v_mm_s, float omega_deg_s)
 {
     chassis_wheel_targets_t targets;
-    if (!chassis_kinematics(v_mm_s, omega_deg_s * CHASSIS_DEG_TO_RAD, &targets))
-    {
-        return false;
-    }
+    chassis_kinematics(v_mm_s, omega_deg_s * CHASSIS_DEG_TO_RAD, &targets);
     if (!wheel_io_chassis_set(targets.left_rpm, targets.right_rpm)) { return false; }
     status.left_rpm = targets.left_rpm;
     status.right_rpm = targets.right_rpm;
@@ -212,10 +209,6 @@ void chassis_stop(void)
     {
         finish(4U);
     }
-    else
-    {
-        status = (chassis_status_t){0};
-    }
 }
 
 void chassis_step(uint32_t now_ms)
@@ -239,7 +232,7 @@ void chassis_step(uint32_t now_ms)
 
     if (status.mode == CHASSIS_VW)
     {
-        if (!update_targets(status.v_mm_s, status.omega_deg_s)) { finish(5U); }
+        (void)update_targets(status.v_mm_s, status.omega_deg_s);
         return;
     }
 
@@ -255,11 +248,7 @@ void chassis_step(uint32_t now_ms)
     {
         const float omega = heading_control_step(&turn_control, &turn_config, heading.yaw_rad,
                                                  heading.yaw_rate_rad_s, false, now_ms);
-        if (!update_targets(0.0f, omega))
-        {
-            finish(5U);
-            return;
-        }
+        (void)update_targets(0.0f, omega);
         update_turn_status(&heading, omega);
         if (turn_control.settled) { finish(1U); }
         return;
@@ -287,11 +276,7 @@ void chassis_step(uint32_t now_ms)
         const float omega = heading_control_step(&hold_control, &hold_config, heading.yaw_rad,
                                                  heading.yaw_rate_rad_s, integral_allowed,
                                                  now_ms);
-        if (!update_targets(v_cmd, omega))
-        {
-            finish(5U);
-            return;
-        }
+        (void)update_targets(v_cmd, omega);
         update_heading_status(&heading);
         status.omega_deg_s = omega;
         status.i_dps = hold_control.integral_dps;
