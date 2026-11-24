@@ -126,17 +126,25 @@ bool chassis_start_vw(float v_mm_s, float omega_deg_s, uint32_t duration_ms_arg)
     {
         return false;
     }
-    status = (chassis_status_t){.mode = CHASSIS_VW, .v_mm_s = v_mm_s,
-                                .omega_deg_s = omega_deg_s};
-    if (!update_targets(v_mm_s, omega_deg_s))
+    chassis_wheel_targets_t targets;
+    chassis_kinematics(v_mm_s, omega_deg_s * CHASSIS_DEG_TO_RAD, &targets);
+
+    taskENTER_CRITICAL();
+    if (!wheel_io_chassis_set(targets.left_rpm, targets.right_rpm))
     {
-        status = (chassis_status_t){0};
+        taskEXIT_CRITICAL();
         return false;
     }
-    started_ms = osKernelGetTickCount();
-    last_update_ms = started_ms;
+    started_ms = last_update_ms = osKernelGetTickCount();
     duration_ms = duration_ms_arg;
-    status.remaining_ms = duration_ms;
+    status = (chassis_status_t){.mode = CHASSIS_VW,
+                                .v_mm_s = v_mm_s,
+                                .omega_deg_s = omega_deg_s,
+                                .left_rpm = targets.left_rpm,
+                                .right_rpm = targets.right_rpm,
+                                .remaining_ms = duration_ms,
+                                .saturated = targets.saturated};
+    taskEXIT_CRITICAL();
     return true;
 }
 
@@ -152,20 +160,28 @@ bool chassis_start_turn(float relative_deg)
     heading_get_status(&heading);
     if (!heading.valid) { return false; }
 
-    status = (chassis_status_t){.mode = CHASSIS_TURN};
-    status.target_yaw_deg = (heading.yaw_rad + relative_deg * CHASSIS_DEG_TO_RAD) *
-                            CHASSIS_RAD_TO_DEG;
-    heading_control_start(&turn_control, status.target_yaw_deg * CHASSIS_DEG_TO_RAD,
-                          osKernelGetTickCount());
-    if (!update_targets(0.0f, 0.0f))
+    chassis_wheel_targets_t targets;
+    chassis_kinematics(0.0f, 0.0f, &targets);
+    const float target_rad = heading.yaw_rad + relative_deg * CHASSIS_DEG_TO_RAD;
+
+    taskENTER_CRITICAL();
+    if (!wheel_io_chassis_set(targets.left_rpm, targets.right_rpm))
     {
-        status = (chassis_status_t){0};
+        taskEXIT_CRITICAL();
         return false;
     }
-    started_ms = last_update_ms = osKernelGetTickCount();
+    const uint32_t now_ms = osKernelGetTickCount();
+    started_ms = last_update_ms = now_ms;
     duration_ms = 5000U; /* 转向超时 5 s。 */
-    status.remaining_ms = duration_ms;
+    heading_control_start(&turn_control, target_rad, now_ms);
+    status = (chassis_status_t){.mode = CHASSIS_TURN,
+                                .left_rpm = targets.left_rpm,
+                                .right_rpm = targets.right_rpm,
+                                .target_yaw_deg = target_rad * CHASSIS_RAD_TO_DEG,
+                                .remaining_ms = duration_ms,
+                                .saturated = targets.saturated};
     update_turn_status(&heading, 0.0f);
+    taskEXIT_CRITICAL();
     return true;
 }
 
@@ -183,32 +199,44 @@ bool chassis_start_straight(float v_mm_s, uint32_t duration_ms_arg, float distan
     heading_get_status(&heading);
     if (!heading.valid) { return false; }
 
-    status = (chassis_status_t){.mode = CHASSIS_STRAIGHT, .v_mm_s = v_mm_s,
-                                .distance_target_mm = distance_mm};
-    status.target_yaw_deg = heading.yaw_rad * CHASSIS_RAD_TO_DEG;
-    heading_control_start(&hold_control, heading.yaw_rad, osKernelGetTickCount());
     wheel_io_status_t wheel;
     wheel_io_get_status(&wheel);
-    distance_start_left = wheel.encoder.total_left;
-    distance_start_right = wheel.encoder.total_right;
-    if (!update_targets(v_mm_s, 0.0f))
+    chassis_wheel_targets_t targets;
+    chassis_kinematics(v_mm_s, 0.0f, &targets);
+
+    taskENTER_CRITICAL();
+    if (!wheel_io_chassis_set(targets.left_rpm, targets.right_rpm))
     {
-        status = (chassis_status_t){0};
+        taskEXIT_CRITICAL();
         return false;
     }
-    started_ms = last_update_ms = osKernelGetTickCount();
+    const uint32_t now_ms = osKernelGetTickCount();
+    started_ms = last_update_ms = now_ms;
     duration_ms = duration_ms_arg;
-    status.remaining_ms = duration_ms;
+    heading_control_start(&hold_control, heading.yaw_rad, now_ms);
+    distance_start_left = wheel.encoder.total_left;
+    distance_start_right = wheel.encoder.total_right;
+    status = (chassis_status_t){.mode = CHASSIS_STRAIGHT,
+                                .v_mm_s = v_mm_s,
+                                .left_rpm = targets.left_rpm,
+                                .right_rpm = targets.right_rpm,
+                                .target_yaw_deg = heading.yaw_rad * CHASSIS_RAD_TO_DEG,
+                                .distance_target_mm = distance_mm,
+                                .remaining_ms = duration_ms,
+                                .saturated = targets.saturated};
     update_heading_status(&heading);
+    taskEXIT_CRITICAL();
     return true;
 }
 
 void chassis_stop(void)
 {
+    taskENTER_CRITICAL();
     if (status.mode != CHASSIS_IDLE)
     {
         finish(4U);
     }
+    taskEXIT_CRITICAL();
 }
 
 void chassis_step(uint32_t now_ms)

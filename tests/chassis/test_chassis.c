@@ -2,6 +2,9 @@
 #include "runtime/heading.h"
 #include "runtime/wheel_io.h"
 
+#include "FreeRTOS.h"
+#include "task.h"
+
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
@@ -11,19 +14,35 @@ static uint32_t tick;
 static unsigned critical;
 static bool claimed;
 static bool busy;
+static bool preempt_on_outer_exit;
 static float left_rpm, right_rpm;
 static heading_status_t heading;
 static wheel_io_status_t wheel;
 
 void test_enter(void) { critical++; }
-void test_exit(void) { assert(critical != 0U); critical--; }
+void test_exit(void)
+{
+    assert(critical != 0U);
+    critical--;
+    if (critical == 0U && preempt_on_outer_exit)
+    {
+        preempt_on_outer_exit = false;
+        chassis_step(tick);
+    }
+}
 uint32_t osKernelGetTickCount(void) { return tick; }
 bool wheel_io_chassis_set(float left, float right)
 {
-    if (busy && !claimed) { return false; }
+    taskENTER_CRITICAL();
+    if (busy && !claimed)
+    {
+        taskEXIT_CRITICAL();
+        return false;
+    }
     claimed = true;
     left_rpm = left;
     right_rpm = right;
+    taskEXIT_CRITICAL();
     return true;
 }
 bool wheel_io_chassis_claimed(void) { return claimed; }
@@ -118,8 +137,25 @@ int main(void)
     assert(status.i_dps == 0.0f);
     chassis_stop();
 
+    /* 模拟 wheel_io_chassis_set 退出临界区后立即被高优先级任务抢占，不应误用旧计时判超时。 */
+    tick = 20000U;
+    preempt_on_outer_exit = true;
+    assert(chassis_start_turn(90.0f));
+    assert(!preempt_on_outer_exit);
+    chassis_get_status(&status);
+    assert(status.mode == CHASSIS_TURN && claimed && status.stop_reason == 0U);
+    assert(status.remaining_ms == 5000U);
+
+    preempt_on_outer_exit = true;
+    chassis_stop();
+    assert(!preempt_on_outer_exit);
+    chassis_get_status(&status);
+    assert(status.mode == CHASSIS_IDLE && !claimed && status.stop_reason == 4U);
+
     busy = true;
     assert(!chassis_start_vw(100.0f, 0.0f, 100U));
+    chassis_get_status(&status);
+    assert(status.stop_reason == 4U);
     assert(!chassis_start_vw(500.0f, 0.0f, 100U));
     assert(chassis_start_vw(100.0f, 0.0f, 5U) == false);
 
