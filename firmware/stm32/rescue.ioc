@@ -350,12 +350,12 @@ USART3.VirtualMode-Asynchronous=VM_ASYNC
 ProjectManager.functionlistsort=0-MX_CORTEX_M7_Init-CORTEX_M7-false-HAL-true,1-SystemClock_Config-RCC-false-HAL-false,2-MX_GPIO_Init-GPIO-false-HAL-true,3-MX_TIM1_Init-TIM1-false-HAL-true,4-MX_TIM2_Init-TIM2-false-HAL-true,5-MX_TIM3_Init-TIM3-false-HAL-true,6-MX_TIM5_Init-TIM5-false-HAL-true,7-MX_UART8_Init-UART8-false-HAL-true
 
 PC2.GPIOParameters=GPIO_Label,GPIO_PuPd
-PC2.GPIO_Label=GIMBAL_KEY_FORWARD
+PC2.GPIO_Label=GIMBAL_MODE_KEY
 PC2.GPIO_PuPd=GPIO_PULLUP
 PC2.Locked=true
 PC2.Signal=GPIO_Input
 PC1.GPIOParameters=GPIO_Label,GPIO_PuPd
-PC1.GPIO_Label=GIMBAL_KEY_REVERSE
+PC1.GPIO_Label=GRIPPER_TOGGLE_KEY
 PC1.GPIO_PuPd=GPIO_PULLUP
 PC1.Locked=true
 PC1.Signal=GPIO_Input

@@ -4,7 +4,6 @@
 #include "config/wheel_config.h"
 
 #include <math.h>
-#include <stddef.h>
 
 #define CHASSIS_PI 3.14159265358979323846f
 
@@ -15,13 +14,8 @@ static float clampf(float value, float low, float high)
     return value;
 }
 
-bool chassis_kinematics(float v_mm_s, float omega_rad_s, chassis_wheel_targets_t *targets)
+void chassis_kinematics(float v_mm_s, float omega_rad_s, chassis_wheel_targets_t *targets)
 {
-    if (targets == NULL || !isfinite(v_mm_s) || !isfinite(omega_rad_s))
-    {
-        return false;
-    }
-
     const float mm_per_rpm = CHASSIS_PI * CHASSIS_WHEEL_DIAMETER_MM / 60.0f;
     float center_rpm = v_mm_s / mm_per_rpm;
     float turn_rpm = omega_rad_s * (CHASSIS_TRACK_WIDTH_MM * 0.5f) / mm_per_rpm;
@@ -42,5 +36,4 @@ bool chassis_kinematics(float v_mm_s, float omega_rad_s, chassis_wheel_targets_t
     targets->left_rpm = center_rpm - turn_rpm;
     targets->right_rpm = center_rpm + turn_rpm;
     targets->saturated = saturated;
-    return true;
 }

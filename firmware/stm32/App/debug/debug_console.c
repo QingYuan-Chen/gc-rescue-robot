@@ -188,7 +188,7 @@ static void execute_line(char *line)
         write_text("OK help: ping | status | get report_ms | "
                    "set report_ms <0|100..60000> | encoder | motor status | motor stop | "
                    "motor left/right <duty> <ms> | motor both <left> <right> <ms> | "
-                   "speed cfg/set/apply/target/stop/get | "
+                   "speed target/stop/get | "
                    "chassis vw <v_mm_s> <w_deg_s> <ms> | chassis turn <deg> | "
                    "chassis straight <v_mm_s> <ms> [mm] | chassis stop/get | "
                    "turn set/hold set <param> <value> | hold get | "
@@ -309,14 +309,9 @@ void debug_console_run(void)
         }
 
         const uint32_t tick = osKernelGetTickCount();
-        if (speed_commands_poll_result(response, sizeof(response)))
+        if (speed_commands_wave_due(tick, response, sizeof(response)))
         {
-            write_text(response);
-        }
-        else if (speed_commands_wave_due(tick, response, sizeof(response)))
-        {
-            if (length != 0U || speed_commands_result_pending() ||
-                !debug_uart_try_sample(response, (uint16_t)strlen(response)))
+            if (length != 0U || !debug_uart_try_sample(response, (uint16_t)strlen(response)))
             {
                 speed_commands_wave_dropped();
             }

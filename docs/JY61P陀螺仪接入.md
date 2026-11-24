@@ -9,8 +9,12 @@ UART8 发送 `imu get` 查看状态：
 - `receiving` 为串口接收状态；`accel_frames`、`gyro_frames`、`angle_frames` 是各类有效帧计数；`checksum_errors` 和 `uart_errors` 是错误计数。
 - `accel_mg` 按 X、Y、Z 顺序输出毫 g；`gyro_mdeg_s` 输出毫度/秒；`angle_mdeg` 输出毫度。每类数据的 `age_ms` 表示距最近一帧的时间。
 - 每种数据收到有效帧后才显示。方向沿用传感器坐标；传感器安装轴与车体方向仍需实测。JY61P 的 Z 轴角度会随时间漂移。
-- `imu get` 末尾新增 `heading` 行，输出连续航向 `yaw_mdeg`、角速度 `rate_mdps`、数据年龄、帧周期、`valid` 和跳变标志。航向源位于 `App/runtime/heading.c`，安装轴和符号在 `App/config/chassis_config.h`。
+- `imu get` 末尾新增 `heading` 行，输出连续航向 `yaw_mdeg`、角速度 `rate_mdps`、数据年龄、帧周期、`valid` 和跳变标志。航向源位于 `App/runtime/heading.c`，安装轴、符号、失效超时和跳变门限都写在该文件的 `heading_update` 中。
 - 建议先把输出频率配置为 100 Hz。当前航向超时阈值为 50 ms，10 Hz 输出会持续判为无效。
 - 串口命令 `imu rate 100` 会通过 USART3 发送解锁、设置频率和保存三帧；支持 `0,1,2,5,10,20,50,100,200`。JY61P 的 RRATE 实测映射为 `0x08=50 Hz`、`0x09=100 Hz`。收到 `OK imu rate=... saved` 后直接用 `imu get` 确认 `period_ms≈10`。
 
-串口使用中断逐字节接收，初始化和 IRQ 接入位于 `App/bsp/imu.c` 与 `stm32h7xx_it.c` 的用户代码区；`.ioc` 同步了 USART3 和引脚。CubeMX 重生成后需核对 USART3 初始化及中断入口，避免重复生成。当前尚未烧录，实际模块波特率、输出内容、数据方向和接收负载待上板确认。
+## 上板状态
+
+2026-11-19 实车验收通过：串口通信正常，帧周期满足 50 ms 失效门限，Z 轴航向与左转为正的符号约定在实车上确认，手转跨 ±180° 连续无跳变。验收以功能确认为准，未记录具体帧率与漂移量；断流保护已实测能触发停车。记录见[实车验收记录](validation/2026-11-19-chassis-field-acceptance.md)。
+
+串口使用中断逐字节接收，初始化和 IRQ 接入位于 `App/bsp/imu.c` 与 `stm32h7xx_it.c` 的用户代码区；`.ioc` 同步了 USART3 和引脚。CubeMX 重生成后需核对 USART3 初始化及中断入口，避免重复生成。JY61P 的 Z 轴角度随时间漂移，长时间任务需定期用已验证的视觉对准更新参考。

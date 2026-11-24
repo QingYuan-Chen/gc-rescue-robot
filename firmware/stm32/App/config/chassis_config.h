@@ -1,59 +1,10 @@
 #ifndef ROBOT_CHASSIS_CONFIG_H
 #define ROBOT_CHASSIS_CONFIG_H
 
-/* 底盘几何与航向源；实测校准前均视为待验证值。 */
+/* 多个模块共用的底盘几何与命令范围；只在这里定义，其余常量写在使用处。 */
 #define CHASSIS_WHEEL_DIAMETER_MM 65.0f
 #define CHASSIS_TRACK_WIDTH_MM 220.0f
-#define CHASSIS_PERIOD_MS 20U
-#define CHASSIS_MAX_V_MM_S 300.0f
-#define CHASSIS_MAX_OMEGA_DEG_S 120.0f
 #define CHASSIS_COMMAND_MIN_MS 10U
 #define CHASSIS_COMMAND_MAX_MS 3000U
-#define CHASSIS_MAX_DISTANCE_MM 10000.0f
-#define CHASSIS_STRAIGHT_ACCEL_MM_S2 300.0f
-
-/* 原地转向和直行保向初值；VOFA 在线修改，上板整定。转向环不使用积分。 */
-#define CHASSIS_TURN_KP 3.0f
-#define CHASSIS_TURN_KD 0.0f
-#define CHASSIS_TURN_KI 0.0f
-#define CHASSIS_TURN_FILTER_MS 20.0f
-#define CHASSIS_TURN_WMAX_DPS 90.0f
-#define CHASSIS_TURN_ACCEL_DPS2 180.0f
-#define CHASSIS_TURN_TOL_DEG 2.0f
-#define CHASSIS_TURN_RATE_TOL_DPS 5.0f
-#define CHASSIS_TURN_IZONE_DEG 5.0f
-#define CHASSIS_TURN_ILIMIT_DPS 0.0f
-/* 大角度转向的制动减速度；0 表示关闭，退回线性 P。必须不大于 ACCEL。 */
-#define CHASSIS_TURN_BRAKE_DPS2 100.0f
-#define CHASSIS_TURN_SETTLE_MS 100U
-#define CHASSIS_TURN_TIMEOUT_MS 5000U
-#define CHASSIS_TURN_MAX_DEG 360.0f
-
-/* 直行保向用弱积分消除两轮速度差带来的稳态偏角；D 项保留代码，当前为 0。 */
-#define CHASSIS_HOLD_KP 1.0f
-#define CHASSIS_HOLD_KD 0.00f
-#define CHASSIS_HOLD_KI 0.10f
-#define CHASSIS_HOLD_FILTER_MS 20.0f
-#define CHASSIS_HOLD_WMAX_DPS 30.0f
-#define CHASSIS_HOLD_ACCEL_DPS2 120.0f
-#define CHASSIS_HOLD_TOL_DEG 3.0f
-#define CHASSIS_HOLD_RATE_TOL_DPS 10.0f
-#define CHASSIS_HOLD_IZONE_DEG 5.0f
-#define CHASSIS_HOLD_ILIMIT_DPS 5.0f
-/* 直行不用制动曲线，保持线性 P 加弱积分。 */
-#define CHASSIS_HOLD_BRAKE_DPS2 0.0f
-#define CHASSIS_HOLD_SETTLE_MS 100U
-/* 低速冻结：起步加速阶段和末端减速阶段不积分。 */
-#define CHASSIS_HOLD_I_MIN_V_MM_S 30.0f
-#define CHASSIS_HOLD_I_DELAY_MS 300U
-
-/* JY61P 安装轴：默认 Z 轴为航向轴，符号可在上板核对后修改。 */
-#define CHASSIS_IMU_YAW_AXIS 2U
-#define CHASSIS_IMU_YAW_SIGN 1.0f
-#define CHASSIS_IMU_RATE_SIGN 1.0f
-#define CHASSIS_IMU_TIMEOUT_MS 50U
-
-/* 连续航向跳变保护：正常单帧变化不应超过该值。 */
-#define CHASSIS_IMU_MAX_DELTA_RAD 0.5f
 
 #endif

@@ -21,8 +21,6 @@ typedef struct
     wheel_speed_t speed[2];
     float target_rpm[2];
     uint32_t dt_us;
-    uint32_t applied_id;
-    uint32_t applied_ms;
     uint8_t selected;
     uint8_t stop_reason;
     bool session;
@@ -30,32 +28,6 @@ typedef struct
     bool stop_pending;
     bool speed_running;
 } wheel_io_status_t;
-
-typedef enum
-{
-    SPEED_TARGET, SPEED_APPLY
-} speed_event_type_t;
-
-typedef struct
-{
-    speed_event_type_t type;
-    uint8_t wheels;
-    float target[2];
-    wheel_speed_config_t config[2];
-    uint32_t id;
-} speed_event_t;
-
-typedef struct
-{
-    uint32_t id;
-    uint32_t applied_ms;
-    speed_event_type_t type;
-    bool accepted;
-    uint8_t wheels;
-    wheel_speed_config_t config[2];
-} speed_result_t;
-
-typedef enum { SPEED_PARAM_KP, SPEED_PARAM_KI, SPEED_PARAM_LIMIT, SPEED_PARAM_RAMP } speed_param_t;
 
 /* 唯一周期任务调用；init 仅在启动时调用一次，初始化编码器，电机保持关闭。 */
 bool wheel_io_init(uint32_t now_ms);
@@ -67,12 +39,9 @@ void wheel_io_step(uint32_t now_ms, bool delay_error);
 bool wheel_io_request(int16_t left, int16_t right, uint32_t duration_ms);
 void wheel_io_stop(void);
 void wheel_io_get_status(wheel_io_status_t *status);
-bool wheel_io_speed_stage(unsigned side, speed_param_t parameter, float value, bool live,
-                          uint32_t *id);
-void wheel_io_speed_get_staged(wheel_speed_config_t config[2]);
-bool wheel_io_speed_enqueue(speed_event_t *event);
-bool wheel_io_speed_result(speed_result_t *result);
-bool wheel_io_speed_result_pending(void);
+
+/* 直接设置左右轮闭环目标 RPM，下一控制周期生效；非零目标会持续保持。 */
+bool wheel_io_speed_target(float left_rpm, float right_rpm);
 
 /* 底盘层提交左右轮目标 RPM；返回 false 表示当前被其他控制源占用。 */
 bool wheel_io_chassis_set(float left_rpm, float right_rpm);

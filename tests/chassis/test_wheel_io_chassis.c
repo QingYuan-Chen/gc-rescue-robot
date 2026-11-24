@@ -55,8 +55,8 @@ int main(void)
     assert(status.session && status.motor.phase_left == MOTOR_RUNNING);
     assert(status.motor.applied_left > 0);
 
-    speed_event_t event = {.type = SPEED_TARGET, .wheels = 1U, .target = {5.0f, 0.0f}};
-    assert(!wheel_io_speed_enqueue(&event));
+    assert(!wheel_io_speed_target(5.0f, 0.0f));
+    assert(!wheel_io_speed_target(200.0f, 0.0f));
     assert(!wheel_io_request(50, 50, 100U));
 
     wheel_io_stop();
@@ -64,6 +64,16 @@ int main(void)
     assert(!wheel_io_chassis_claimed());
     wheel_io_get_status(&status);
     assert(status.motor.phase_left == MOTOR_OFF && status.motor.phase_right == MOTOR_OFF);
+
+    /* 停车后可以切入闭环速度目标。 */
+    assert(wheel_io_speed_target(5.0f, 5.0f));
+    step();
+    wheel_io_get_status(&status);
+    assert(status.session && status.speed_running);
+    assert(status.motor.applied_left > 0);
+    wheel_io_stop();
+    step();
+
     assert(wheel_io_request(50, 50, 100U));
     step();
     wheel_io_get_status(&status);

@@ -28,7 +28,6 @@ typedef struct
     float integral_dps;
     uint32_t last_ms;
     uint32_t settle_start_ms;
-    bool started;
     bool settled;
 } heading_control_t;
 

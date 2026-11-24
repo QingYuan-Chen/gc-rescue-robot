@@ -1,7 +1,6 @@
 #include "heading.h"
 
 #include "bsp/imu.h"
-#include "config/chassis_config.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -41,7 +40,8 @@ void heading_update(uint32_t now_ms)
 
     if (imu.angle_frames != latest.angle_frames)
     {
-        const float raw = CHASSIS_IMU_YAW_SIGN * (float)imu.angle[CHASSIS_IMU_YAW_AXIS];
+        /* JY61P 安装轴：Z 轴（索引 2）为航向轴，左转为正。 */
+        const float raw = (float)imu.angle[2];
         const float raw_rad = raw * HEADING_ANGLE_RAD_PER_LSB;
         if (!has_angle)
         {
@@ -51,7 +51,8 @@ void heading_update(uint32_t now_ms)
         else
         {
             const float delta = wrap_pi(raw_rad - last_raw_rad);
-            if (fabsf(delta) <= CHASSIS_IMU_MAX_DELTA_RAD)
+            /* 正常单帧变化不应超过 0.5 rad，超出按跳变处理。 */
+            if (fabsf(delta) <= 0.5f)
             {
                 latest.yaw_rad += delta;
             }
@@ -71,17 +72,17 @@ void heading_update(uint32_t now_ms)
 
     if (imu.gyro_frames != latest.gyro_frames)
     {
-        const float raw = CHASSIS_IMU_RATE_SIGN * (float)imu.gyro[CHASSIS_IMU_YAW_AXIS];
+        const float raw = (float)imu.gyro[2];
         latest.yaw_rate_rad_s = raw * HEADING_RATE_RAD_PER_LSB;
         latest.gyro_frames = imu.gyro_frames;
     }
 
     latest.age_ms = now_ms - imu.angle_ms;
     const uint32_t gyro_age = now_ms - imu.gyro_ms;
+    /* 航向或角速度超过 50 ms 未更新即判为失效。 */
     latest.valid = has_angle && !latest.jump_error && imu.receiving &&
                    imu.angle_frames != 0U && imu.gyro_frames != 0U &&
-                   latest.age_ms <= CHASSIS_IMU_TIMEOUT_MS &&
-                   gyro_age <= CHASSIS_IMU_TIMEOUT_MS;
+                   latest.age_ms <= 50U && gyro_age <= 50U;
 }
 
 void heading_get_status(heading_status_t *status)

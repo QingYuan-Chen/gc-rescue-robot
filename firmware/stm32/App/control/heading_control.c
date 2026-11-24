@@ -1,7 +1,6 @@
 #include "heading_control.h"
 
 #include <math.h>
-#include <stddef.h>
 
 #define HEADING_CONTROL_RAD_TO_DEG 57.29577951308232f
 #define HEADING_CONTROL_MIN_DT_MS 1.0f
@@ -37,23 +36,18 @@ void heading_control_init(heading_control_t *control)
 
 bool heading_control_config_valid(const heading_control_config_t *config)
 {
-    if (config == NULL) { return false; }
-    return isfinite(config->kp) && isfinite(config->kd) && isfinite(config->ki) &&
-           isfinite(config->filter_ms) && isfinite(config->wmax_dps) &&
-           isfinite(config->accel_dps2) && isfinite(config->tol_deg) &&
-           isfinite(config->rate_tol_dps) && isfinite(config->izone_deg) &&
-           isfinite(config->ilimit_dps) && config->kp >= 0.0f && config->kp <= 20.0f &&
-           config->kd >= 0.0f && config->kd <= 5.0f && config->ki >= 0.0f &&
-           config->ki <= 2.0f && config->filter_ms >= 0.0f &&
-           config->filter_ms <= 200.0f && config->wmax_dps >= 1.0f &&
-           config->wmax_dps <= 200.0f && config->accel_dps2 >= 10.0f &&
-           config->accel_dps2 <= 1000.0f && config->tol_deg >= 0.1f &&
-           config->tol_deg <= 20.0f && config->rate_tol_dps >= 0.1f &&
-           config->rate_tol_dps <= 50.0f && config->izone_deg >= 0.1f &&
-           config->izone_deg <= 45.0f && config->ilimit_dps >= 0.0f &&
-           config->ilimit_dps <= 50.0f && config->brake_dps2 >= 0.0f &&
-           config->brake_dps2 <= config->accel_dps2 && config->settle_ms >= 10U &&
-           config->settle_ms <= 1000U;
+    /* 本文件启用了 -fno-fast-math，有界比较按 IEEE 规则自动拒绝 NaN 与 Inf。 */
+    return config->kp >= 0.0f && config->kp <= 20.0f && config->kd >= 0.0f &&
+           config->kd <= 5.0f && config->ki >= 0.0f && config->ki <= 2.0f &&
+           config->filter_ms >= 0.0f && config->filter_ms <= 200.0f &&
+           config->wmax_dps >= 1.0f && config->wmax_dps <= 200.0f &&
+           config->accel_dps2 >= 10.0f && config->accel_dps2 <= 1000.0f &&
+           config->tol_deg >= 0.1f && config->tol_deg <= 20.0f &&
+           config->rate_tol_dps >= 0.1f && config->rate_tol_dps <= 50.0f &&
+           config->izone_deg >= 0.1f && config->izone_deg <= 45.0f &&
+           config->ilimit_dps >= 0.0f && config->ilimit_dps <= 50.0f &&
+           config->brake_dps2 >= 0.0f && config->brake_dps2 <= config->accel_dps2 &&
+           config->settle_ms >= 10U && config->settle_ms <= 1000U;
 }
 
 void heading_control_start(heading_control_t *control, float target_rad, uint32_t now_ms)
@@ -64,7 +58,6 @@ void heading_control_start(heading_control_t *control, float target_rad, uint32_
     control->integral_dps = 0.0f;
     control->last_ms = now_ms;
     control->settle_start_ms = 0U;
-    control->started = true;
     control->settled = false;
 }
 
@@ -72,7 +65,6 @@ float heading_control_step(heading_control_t *control, const heading_control_con
                            float yaw_rad, float yaw_rate_rad_s, bool allow_integral,
                            uint32_t now_ms)
 {
-    if (!control->started) { return 0.0f; }
     const float dt_ms = clampf((float)(now_ms - control->last_ms),
                                HEADING_CONTROL_MIN_DT_MS, HEADING_CONTROL_MAX_DT_MS);
     const float dt_s = dt_ms * 0.001f;
